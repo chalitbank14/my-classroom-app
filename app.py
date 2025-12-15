@@ -399,7 +399,8 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-tabs = st.tabs(["⚡ Command Center", "🏆 Rankings", "📈 Analytics", "🛠️ Management"])
+# แก้ไขบรรทัดนี้เพื่อเพิ่มแท็บที่ 4
+tabs = st.tabs(["⚡ Command Center", "🏆 Rankings", "📈 Evolution Analytics", "ℹ️ รายละเอียดยศ", "🛠️ Management"])
 
 # --- TAB 1: HYBRID COMMAND CENTER ---
 with tabs[0]:
@@ -653,6 +654,88 @@ with tabs[2]:
         else:
             st.info("ยังไม่มีประวัติการให้คะแนนในห้องนี้ กราฟจะแสดงเมื่อมีการบันทึกคะแนนแรก")
 
+# --- TAB 4: RANK INFO (เนื้อหาใหม่) ---
+with tabs[3]:
+    st.markdown("## 🏛️ ทำเนียบสิทธิพิเศษ (The Privilege Hierarchy)")
+    st.info("💡 สิทธิพิเศษจะเปิดใช้งานได้ **หลังสอบกลางภาคเสร็จ** เท่านั้น | **ยศไม่ใช่แค่ตัวเลข แต่คืออำนาจที่แท้จริง!**")
+    
+    st.markdown("#### 🪜 บันไดแห่งอำนาจ: จากผู้รับความช่วยเหลือ → ผู้ปกครองกฎเกณฑ์")
+    
+    # 1. Intern
+    st.markdown("""
+    <div class="rank-detail-card" style="border-left: 6px solid #64748b; padding: 20px; background: white; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+        <h3 style="color:#64748b; margin:0;">👶 เด็กฝึกงาน (Intern)</h3>
+        <span class="status-badge" style="background:#f1f5f9; color:#64748b; padding: 2px 10px; border-radius: 10px; font-weight: bold; font-size: 0.8rem;">0+ XP</span>
+        <hr style="margin: 10px 0;">
+        <h4 style="margin:0;">🔍 สิทธิ์ Check-up (ตรวจสอบความถูกต้อง)</h4>
+        <p style="margin-top:5px;">ก่อนส่งใบงานชิ้นสำคัญ สามารถนำมาให้ครู "ตรวจทานเบื้องต้น" (Pre-check) ได้ ครูจะวงจุดที่ผิดให้กลับไปแก้ก่อนส่งจริง</p>
+        <div style="background-color: #f1f5f9; padding: 10px; border-radius: 8px; font-weight: 600; color: #334155; margin-top: 10px; border-left: 4px solid #64748b;">
+            💪 ได้รับ "คำแนะนำ" แต่ยังต้องลงมือทำและแก้ไขเองทั้งหมด
+        </div>
+        <p style="margin-top:10px; color:grey; font-size:0.9rem;">➡️ อีก 100 XP เพื่อเลื่อนยศเป็น พนักงาน</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 2. Employee
+    st.markdown("""
+    <div class="rank-detail-card" style="border-left: 6px solid #10b981; padding: 20px; background: white; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+        <h3 style="color:#10b981; margin:0;">👨‍💼 พนักงานลูกจ้าง (Employee)</h3>
+        <span class="status-badge" style="background:#d1fae5; color:#10b981; padding: 2px 10px; border-radius: 10px; font-weight: bold; font-size: 0.8rem;">100+ XP</span>
+        <hr style="margin: 10px 0;">
+        <h4 style="margin:0;">⏰ สิทธิ์ Time Extension (ขยายเวลา)</h4>
+        <p style="margin-top:5px;">ส่งงานล่าช้ากว่ากำหนดได้เพิ่มอีก 1 สัปดาห์ โดยไม่ถูกหักคะแนนครึ่งหนึ่งของงานนั้น หรือคะแนนความรับผิดชอบ จิตพิสัย (ใช้ได้กับทุกงานหลังจากสอบกลางภาค)</p>
+        <div style="background-color: #f1f5f9; padding: 10px; border-radius: 8px; font-weight: 600; color: #334155; margin-top: 10px; border-left: 4px solid #10b981;">
+            💪 มีอำนาจเหนือ "เวลา" - ไม่ต้องกังวลเรื่องส่งงานตรงเวลา
+        </div>
+        <p style="margin-top:10px; color:grey; font-size:0.9rem;">➡️ อีก 200 XP เพื่อเลื่อนยศเป็น หัวหน้าแผนก</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 3. Manager
+    st.markdown("""
+    <div class="rank-detail-card" style="border-left: 6px solid #3b82f6; padding: 20px; background: white; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+        <h3 style="color:#3b82f6; margin:0;">👔 หัวหน้าแผนก (Manager)</h3>
+        <span class="status-badge" style="background:#dbeafe; color:#3b82f6; padding: 2px 10px; border-radius: 10px; font-weight: bold; font-size: 0.8rem;">300+ XP</span>
+        <hr style="margin: 10px 0;">
+        <h4 style="margin:0;">🔄 สิทธิ์ Second Chance (โอกาสครั้งที่สอง)</h4>
+        <p style="margin-top:5px;">หากทำคะแนนสอบย่อย (Quiz) หรือใบงานได้น้อย สามารถขอ "สอบแก้ตัว" หรือ "ทำใบงานชุดเดิมใหม่" เพื่อปรับคะแนนให้ดีขึ้นได้ โดยยังได้คะแนนเต็มอยู่เหมือนเดิม</p>
+        <div style="background-color: #f1f5f9; padding: 10px; border-radius: 8px; font-weight: 600; color: #334155; margin-top: 10px; border-left: 4px solid #3b82f6;">
+            💪 มีอำนาจเหนือ "ความผิดพลาด" - พลาดแล้วยังแก้ไขได้
+        </div>
+        <p style="margin-top:10px; color:grey; font-size:0.9rem;">➡️ อีก 300 XP เพื่อเลื่อนยศเป็น หัวหน้าฝ่าย</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 4. Director
+    st.markdown("""
+    <div class="rank-detail-card" style="border-left: 6px solid #8b5cf6; padding: 20px; background: white; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+        <h3 style="color:#8b5cf6; margin:0;">💼 หัวหน้าฝ่าย (Director)</h3>
+        <span class="status-badge" style="background:#f3e8ff; color:#8b5cf6; padding: 2px 10px; border-radius: 10px; font-weight: bold; font-size: 0.8rem;">600+ XP</span>
+        <hr style="margin: 10px 0;">
+        <h4 style="margin:0;">✂️ สิทธิ์ Workload Cut (ลดภาระงาน 50%)</h4>
+        <p style="margin-top:5px;">ในใบงานที่มีโจทย์เยอะ (เช่น 10 ข้อ) ได้รับอนุญาตให้ทำ "เพียงครึ่งเดียว" (เช่น ทำเฉพาะข้อคู่ 5 ข้อ) แต่ครูจะกรอกคะแนนให้เสมือนว่าทำมาครบถ้วน</p>
+        <div style="background-color: #f1f5f9; padding: 10px; border-radius: 8px; font-weight: 600; color: #334155; margin-top: 10px; border-left: 4px solid #8b5cf6;">
+            💪 มีอำนาจเหนือ "ปริมาณงาน" - ทำงานน้อยกว่าครึ่งหนึ่ง แต่ได้ผลลัพธ์เท่ากัน
+        </div>
+        <p style="margin-top:10px; color:grey; font-size:0.9rem;">➡️ อีก 400 XP เพื่อเลื่อนยศเป็น ประธาน</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 5. President
+    st.markdown("""
+    <div class="rank-detail-card" style="border-left: 6px solid #f59e0b; padding: 20px; background: white; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+        <h3 style="color:#f59e0b; margin:0;">👑 ประธาน (President)</h3>
+        <span class="status-badge" style="background:#fef3c7; color:#f59e0b; padding: 2px 10px; border-radius: 10px; font-weight: bold; font-size: 0.8rem;">1000+ XP</span>
+        <span style="margin-left:10px; font-size:0.8rem; color:#f59e0b;">⭐ ยศสูงสุด</span>
+        <hr style="margin: 10px 0;">
+        <h4 style="margin:0;">🛡️ สิทธิ์ Immunity & Bonus (ภูมิคุ้มกันและโบนัส)</h4>
+        <p style="margin-top:5px;">สามารถเลือกไม่ทำ 3 งาน โดยครูจะยังให้คะแนนเต็มกับงานที่เลือกไม่ทำ + ได้รับคะแนนพิเศษ +1 คะแนนฟรีๆ ในทุกงานที่ส่ง (งานหลังกลางภาค)</p>
+        <div style="background-color: #f1f5f9; padding: 10px; border-radius: 8px; font-weight: 600; color: #334155; margin-top: 10px; border-left: 4px solid #f59e0b;">
+            💪 มีอำนาจเหนือ "กฎเกณฑ์" - ลบประวัติเสียได้ และได้คะแนนมาฟรี
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
 # --- TAB 4: MANAGEMENT ---
 with tabs[3]:
     c1, c2 = st.columns(2)
