@@ -411,18 +411,127 @@ with tabs[1]:
             """, unsafe_allow_html=True)
             st.progress(pct)
 
-# --- TAB 3: ANALYTICS ---
+# --- TAB 3: EVOLUTION ANALYTICS ---
 with tabs[2]:
-    if not room_df.empty:
-        ana_t = st.selectbox("เลือกกลุ่มเพื่อวิเคราะห์", room_df['GroupName'].unique())
-        try:
-            row = room_df[room_df['GroupName']==ana_t].iloc[0]
-            h = pd.DataFrame(json.loads(row['HistoryLog']))
-            if not h.empty:
-                h['ts'] = pd.to_datetime(h['ts'])
-                st.altair_chart(alt.Chart(h).mark_line(point=True, color='#6366f1').encode(x='ts', y='balance').properties(height=300), use_container_width=True)
-                st.dataframe(h, use_container_width=True)
-        except: st.info("No data")
+    if room_df.empty:
+        st.info("ยังไม่มีข้อมูลกลุ่มในห้องนี้")
+    else:
+        # =========================================================
+        # PART 1: ROOM OVERVIEW (สถิติรวมของห้อง)
+        # =========================================================
+        st.markdown("#### 📊 ภาพรวมห้องเรียน (Room Overview)")
+        
+        # คำนวณสถิติ
+        total_xp = room_df['XP'].sum()
+        avg_xp = room_df['XP'].mean()
+        # หากลุ่มที่มีคะแนนสูงสุด
+        top_group_row = room_df.loc[room_df['XP'].idxmax()]
+        top_group_name = top_group_row['GroupName']
+        top_group_xp = top_group_row['XP']
+        
+        # แสดงผลเป็นกล่อง 3 กล่อง
+        m1, m2, m3 = st.columns(3)
+        
+        # กล่องที่ 1: Top Group
+        m1.markdown(f"""
+        <div class='stat-box'>
+            <h3 style='margin:0; font-size:1rem; color:grey;'>🏆 Top Group</h3>
+            <div style='color:#6366f1; font-weight:bold; font-size:1.5rem;'>{top_group_name}</div>
+            <small>({top_group_xp} XP)</small>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # กล่องที่ 2: Total XP
+        m2.markdown(f"""
+        <div class='stat-box'>
+            <h3 style='margin:0; font-size:1rem; color:grey;'>✨ Total XP (Class)</h3>
+            <div style='color:#10b981; font-weight:bold; font-size:1.5rem;'>{total_xp:,}</div>
+            <small>คะแนนรวมทั้งห้อง</small>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # กล่องที่ 3: Average XP
+        m3.markdown(f"""
+        <div class='stat-box'>
+            <h3 style='margin:0; font-size:1rem; color:grey;'>📈 Average XP</h3>
+            <div style='color:#f59e0b; font-weight:bold; font-size:1.5rem;'>{avg_xp:.1f}</div>
+            <small>คะแนนเฉลี่ยต่อกลุ่ม</small>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # =========================================================
+        # PART 2: EVOLUTION RACE CHART (กราฟเส้นรวมทุกกลุ่ม)
+        # =========================================================
+        st.markdown("#### 🏎️ เส้นทางวิวัฒนาการ (XP Evolution Race)")
+        st.caption("กราฟเปรียบเทียบการเติบโตของคะแนนแต่ละกลุ่มตามช่วงเวลา")
+        
+        # ดึงประวัติของ "ทุกกลุ่ม" มารวมกัน
+        all_history = []
+        for _, row in room_df.iterrows():
+            try:
+                logs = json.loads(row['HistoryLog'])
+                for log in logs:
+                    all_history.append({
+                        'Group': row['GroupName'],
+                        'Timestamp': pd.to_datetime(log['ts']),
+                        'Score': log.get('balance', 0), # ใช้ balance ณ ตอนนั้น
+                        'Reason': log['reason'],
+                        'Change': log['amount']
+                    })
+            except:
+                pass
+            
+        if all_history:
+            hist_df = pd.DataFrame(all_history)
+            
+            # สร้างกราฟเส้น Multi-line Chart
+            chart = alt.Chart(hist_df).mark_line(point=True).encode(
+                # แกน X เป็นเวลา
+                x=alt.X('Timestamp', title='เวลาที่บันทึก', axis=alt.Axis(format='%d/%m %H:%M')),
+                # แกน Y เป็นคะแนนสะสม
+                y=alt.Y('Score', title='คะแนนสะสม (XP)'),
+                # สีเส้นแบ่งตามชื่อกลุ่ม
+                color=alt.Color('Group', scale=alt.Scale(scheme='category20'), title='ชื่อกลุ่ม'),
+                # Tooltip เวลาเอาเมาส์ชี้
+                tooltip=[
+                    alt.Tooltip('Group', title='กลุ่ม'),
+                    alt.Tooltip('Timestamp', title='เวลา', format='%d/%m %H:%M'),
+                    alt.Tooltip('Score', title='คะแนนรวม'),
+                    alt.Tooltip('Change', title='ล่าสุด (+/-)'),
+                    alt.Tooltip('Reason', title='เหตุผล')
+                ]
+            ).properties(
+                height=450, # ความสูงกราฟ
+                width='container'
+            ).interactive() # ทำให้ซูมเข้าออก/เลื่อนได้
+            
+            st.altair_chart(chart, use_container_width=True)
+            
+            # =========================================================
+            # PART 3: COMBINED RECENT ACTIVITY (ตารางประวัติรวม)
+            # =========================================================
+            st.markdown("#### 🕒 ความเคลื่อนไหวล่าสุด (All Activity)")
+            
+            # เรียงลำดับตามเวลาล่าสุด
+            recent_df = hist_df.sort_values('Timestamp', ascending=False).head(50)
+            
+            # จัด Format ตารางให้สวยงาม
+            st.dataframe(
+                recent_df[['Timestamp', 'Group', 'Reason', 'Change', 'Score']],
+                column_config={
+                    "Timestamp": st.column_config.DatetimeColumn("เวลา", format="D MMM, HH:mm"),
+                    "Group": "กลุ่ม",
+                    "Reason": "รายการกิจกรรม",
+                    "Change": st.column_config.NumberColumn("เปลี่ยนแปลง", format="%+d XP"),
+                    "Score": st.column_config.NumberColumn("ยอดคงเหลือ", format="%d XP")
+                },
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("ยังไม่มีประวัติการให้คะแนนในห้องนี้ กราฟจะแสดงเมื่อมีการบันทึกคะแนนแรก")
 
 # --- TAB 4: MANAGEMENT ---
 with tabs[3]:
