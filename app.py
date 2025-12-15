@@ -736,7 +736,7 @@ with tabs[3]:
     </div>
     """, unsafe_allow_html=True)
     
-# --- TAB 4: MANAGEMENT ---
+# --- TAB 5: MANAGEMENT ---
 with tabs[3]:
     c1, c2 = st.columns(2)
     with c1:
