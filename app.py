@@ -11,92 +11,99 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 
 # ==============================================================================
-# ฟังก์ชันสร้างรูปภาพจัดอันดับ (Image Generator Engine)
+# ฟังก์ชันสร้างรูปภาพจัดอันดับ (Image Generator Engine) - แก้ไขให้โชว์ครบทุกกลุ่ม
 # ==============================================================================
 def generate_image(room_name, df, rank_sys):
-    # 1. ตั้งค่าหน้ากระดาษ (แนวตั้งมือถือ Width 1080px คมชัด)
-    W, ROW_H = 1080, 180
-    HEADER_H = 400
-    # คำนวณความสูงตามจำนวนกลุ่มที่มี
-    H = HEADER_H + (len(df) * ROW_H) + 100 
+    # 1. จัดเรียงข้อมูลจากมากไปน้อย (เอาทั้งหมด ไม่ตัด top 10)
+    sorted_df = df.sort_values("XP", ascending=False).reset_index(drop=True)
+    total_groups = len(sorted_df)
+    
+    # 2. ตั้งค่าขนาด
+    W = 1080              # ความกว้าง (Full HD แนวตั้ง)
+    ROW_H = 200           # ความสูงต่อ 1 กลุ่ม (รวมระยะห่างแล้ว)
+    HEADER_H = 450        # ความสูงส่วนหัว
+    FOOTER_H = 100        # ความสูงส่วนท้าย
+    
+    # *** สูตรคำนวณความสูงแบบ Dynamic (ยืดตามจำนวนกลุ่มจริง) ***
+    # ถ้ามี 10 กลุ่ม รูปจะสูงระดับนึง, ถ้า 50 กลุ่ม รูปจะยาวมาก
+    H = HEADER_H + (total_groups * ROW_H) + FOOTER_H
     
     # สร้างกระดาษเปล่าสีพื้นหลัง
-    img = Image.new('RGB', (W, H), color='#F8FAFC')
+    img = Image.new('RGB', (W, H), color='#F1F5F9')
     draw = ImageDraw.Draw(img)
     
-    # 2. โหลดฟอนต์ (ถ้าไม่มีไฟล์ จะพยายามใช้ค่า Default)
+    # 3. โหลดฟอนต์ (ใช้ฟอนต์ตัวใหญ่ขึ้นเพื่อให้อ่านง่ายในมือถือ)
     try:
-        # ใช้ขนาดใหญ่เพื่อให้ภาพคมชัด
-        font_title = ImageFont.truetype("Sarabun-Bold.ttf", 120)
+        font_title = ImageFont.truetype("Sarabun-Bold.ttf", 140)
         font_sub = ImageFont.truetype("Sarabun-Bold.ttf", 60)
-        font_name = ImageFont.truetype("Sarabun-Bold.ttf", 70)
-        font_detail = ImageFont.truetype("Sarabun-Regular.ttf", 40)
-        font_score = ImageFont.truetype("Sarabun-Bold.ttf", 90)
-        font_rank = ImageFont.truetype("Sarabun-Bold.ttf", 50)
+        font_rank = ImageFont.truetype("Sarabun-Bold.ttf", 70)
+        font_name = ImageFont.truetype("Sarabun-Bold.ttf", 80)
+        font_detail = ImageFont.truetype("Sarabun-Regular.ttf", 45)
+        font_score = ImageFont.truetype("Sarabun-Bold.ttf", 100)
     except:
-        # กรณีฉุกเฉินหาไฟล์ไม่เจอ
+        # Fallback กรณีไม่มีฟอนต์
         font_title = ImageFont.load_default()
         font_sub = ImageFont.load_default()
+        font_rank = ImageFont.load_default()
         font_name = ImageFont.load_default()
         font_detail = ImageFont.load_default()
         font_score = ImageFont.load_default()
-        font_rank = ImageFont.load_default()
 
-    # 3. วาดส่วนหัว (Header) สไตล์ Hero Gradient
-    # วาดสี่เหลี่ยมสีน้ำเงินไล่โทน (จำลองด้วยการวาดสีพื้น)
-    draw.rectangle([(0, 0), (W, HEADER_H)], fill='#4338CA')
+    # 4. วาดส่วนหัว (Header)
+    draw.rectangle([(0, 0), (W, HEADER_H)], fill='#4F46E5')
+    # ตกแต่งกราฟิก
+    draw.ellipse([(800, -100), (1300, 400)], fill='#6366F1')
+    draw.ellipse([(-200, 100), (300, 600)], fill='#4338CA')
     
-    # วาดวงกลมตกแต่งให้ดูโมเดิร์น
-    draw.ellipse([(800, -100), (1200, 300)], fill='#4F46E5')
-    draw.ellipse([(-100, 200), (200, 500)], fill='#3730A3')
+    # ข้อความหัว
+    draw.text((W/2, 130), f"LEADERBOARD", font=font_sub, fill='#C7D2FE', anchor="mm")
+    draw.text((W/2, 260), f"{room_name}", font=font_title, fill='white', anchor="mm")
     
-    # เขียนข้อความหัวกระดาษ
-    draw.text((W/2, 120), f"LEADERBOARD", font=font_sub, fill='#A5B4FC', anchor="mm")
-    draw.text((W/2, 230), f"{room_name}", font=font_title, fill='white', anchor="mm")
-    
-    # 4. วนลูปวาดรายชื่อกลุ่ม (Loop Drawing)
-    sorted_df = df.sort_values("XP", ascending=False).reset_index(drop=True)
-    current_y = HEADER_H + 40
+    # 5. วนลูปวาดรายชื่อกลุ่ม (ครบทุกกลุ่มที่มีในตาราง)
+    current_y = HEADER_H + 30 # เริ่มวาดต่อจากส่วนหัว
     
     for i, row in sorted_df.iterrows():
-        # กำหนดสีตามอันดับ
+        # กำหนดสีเหรียญรางวัล
         if i == 0:   badge_col = "#F59E0B" # ทอง
         elif i == 1: badge_col = "#94A3B8" # เงิน
         elif i == 2: badge_col = "#B45309" # ทองแดง
         else:        badge_col = "#64748B" # ทั่วไป
         
-        # สีคะแนน (แดงถ้าติดลบ / เขียวถ้าบวก)
+        # สีคะแนน
         score_col = "#EF4444" if row['XP'] < 0 else "#10B981"
         
-        # วาดกล่องการ์ด (Card Background)
+        # กล่องพื้นหลัง (Card)
         # เงา
-        draw.rounded_rectangle([(45, current_y+5), (W-45, current_y+165)], radius=30, fill='#E2E8F0')
+        draw.rounded_rectangle([(45, current_y+8), (W-45, current_y+178)], radius=30, fill='#CBD5E1')
         # พื้นขาว
-        draw.rounded_rectangle([(40, current_y), (W-40, current_y+160)], radius=30, fill='white')
+        draw.rounded_rectangle([(40, current_y), (W-40, current_y+170)], radius=30, fill='white')
         # แถบสีด้านซ้าย
-        draw.rounded_rectangle([(40, current_y), (70, current_y+160)], radius=30, fill=badge_col, corners=(True, False, False, True))
+        draw.rounded_rectangle([(40, current_y), (70, current_y+170)], radius=30, fill=badge_col, corners=(True, False, False, True))
         
-        # เขียนอันดับ (#1, #2...)
-        draw.text((130, current_y+80), f"#{i+1}", font=font_name, fill=badge_col, anchor="mm")
+        # -- วาดรายละเอียดในกล่อง --
         
-        # เขียนชื่อกลุ่ม
-        draw.text((220, current_y+60), str(row['GroupName']), font=font_name, fill='#1E293B', anchor="lm")
+        # อันดับ (#1, #2...)
+        draw.text((140, current_y+85), f"#{i+1}", font=font_rank, fill=badge_col, anchor="mm")
         
-        # เขียนสมาชิก (ตัดคำถ้าเว้นวรรคยาว)
-        mem_txt = str(row['Members'])
-        if len(mem_txt) > 50: mem_txt = mem_txt[:50] + "..."
-        draw.text((220, current_y+115), mem_txt, font=font_detail, fill='#64748B', anchor="lm")
+        # ชื่อกลุ่ม
+        group_name = str(row['GroupName'])
+        draw.text((230, current_y+60), group_name, font=font_name, fill='#1E293B', anchor="lm")
         
-        # เขียนคะแนน
-        draw.text((W-80, current_y+80), f"{row['XP']}", font=font_score, fill=score_col, anchor="rm")
+        # สมาชิก (ตัดคำถ้ายาวเกินไป)
+        members = str(row['Members'])
+        if len(members) > 45: members = members[:42] + "..."
+        draw.text((230, current_y+120), members, font=font_detail, fill='#64748B', anchor="lm")
         
-        # ขยับแกน Y ลงมาเพื่อวาดแถวถัดไป
-        current_y += ROW_H + 20
+        # คะแนน XP
+        draw.text((W-80, current_y+85), f"{row['XP']}", font=font_score, fill=score_col, anchor="rm")
         
-    # ใส่ Footer เครดิตเล็กๆ
-    draw.text((W/2, H-50), "Generated by Classroom OS", font=font_detail, fill='#94A3B8', anchor="mm")
+        # ขยับแกน Y ลงมาเพื่อวาดกลุ่มถัดไป
+        current_y += ROW_H 
 
-    # แปลงข้อมูลเป็น Bytes เพื่อส่งให้ปุ่ม Download
+    # 6. Footer (เครดิตด้านล่างสุด)
+    draw.text((W/2, H-50), f"Generated on {datetime.now().strftime('%d/%m/%Y')}", font=font_detail, fill='#94A3B8', anchor="mm")
+
+    # แปลงเป็นไฟล์ภาพ
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     return buf.getvalue()
