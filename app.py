@@ -736,8 +736,8 @@ with tabs[3]:
     </div>
     """, unsafe_allow_html=True)
     
-# --- TAB 5: MANAGEMENT ---
-with tabs[3]:
+# --- TAB 5: MANAGEMENT (แก้ไขเป็น tabs[4]) ---
+with tabs[4]:
     c1, c2 = st.columns(2)
     with c1:
         with st.form("new_grp"):
