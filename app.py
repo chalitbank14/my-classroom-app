@@ -6,7 +6,100 @@ from datetime import datetime
 import time
 import json
 import uuid
+# --- ส่วน Import ที่ต้องเพิ่ม ---
+from PIL import Image, ImageDraw, ImageFont
+import io
 
+# ==============================================================================
+# ฟังก์ชันสร้างรูปภาพจัดอันดับ (Image Generator Engine)
+# ==============================================================================
+def generate_image(room_name, df, rank_sys):
+    # 1. ตั้งค่าหน้ากระดาษ (แนวตั้งมือถือ Width 1080px คมชัด)
+    W, ROW_H = 1080, 180
+    HEADER_H = 400
+    # คำนวณความสูงตามจำนวนกลุ่มที่มี
+    H = HEADER_H + (len(df) * ROW_H) + 100 
+    
+    # สร้างกระดาษเปล่าสีพื้นหลัง
+    img = Image.new('RGB', (W, H), color='#F8FAFC')
+    draw = ImageDraw.Draw(img)
+    
+    # 2. โหลดฟอนต์ (ถ้าไม่มีไฟล์ จะพยายามใช้ค่า Default)
+    try:
+        # ใช้ขนาดใหญ่เพื่อให้ภาพคมชัด
+        font_title = ImageFont.truetype("Sarabun-Bold.ttf", 120)
+        font_sub = ImageFont.truetype("Sarabun-Bold.ttf", 60)
+        font_name = ImageFont.truetype("Sarabun-Bold.ttf", 70)
+        font_detail = ImageFont.truetype("Sarabun-Regular.ttf", 40)
+        font_score = ImageFont.truetype("Sarabun-Bold.ttf", 90)
+        font_rank = ImageFont.truetype("Sarabun-Bold.ttf", 50)
+    except:
+        # กรณีฉุกเฉินหาไฟล์ไม่เจอ
+        font_title = ImageFont.load_default()
+        font_sub = ImageFont.load_default()
+        font_name = ImageFont.load_default()
+        font_detail = ImageFont.load_default()
+        font_score = ImageFont.load_default()
+        font_rank = ImageFont.load_default()
+
+    # 3. วาดส่วนหัว (Header) สไตล์ Hero Gradient
+    # วาดสี่เหลี่ยมสีน้ำเงินไล่โทน (จำลองด้วยการวาดสีพื้น)
+    draw.rectangle([(0, 0), (W, HEADER_H)], fill='#4338CA')
+    
+    # วาดวงกลมตกแต่งให้ดูโมเดิร์น
+    draw.ellipse([(800, -100), (1200, 300)], fill='#4F46E5')
+    draw.ellipse([(-100, 200), (200, 500)], fill='#3730A3')
+    
+    # เขียนข้อความหัวกระดาษ
+    draw.text((W/2, 120), f"LEADERBOARD", font=font_sub, fill='#A5B4FC', anchor="mm")
+    draw.text((W/2, 230), f"{room_name}", font=font_title, fill='white', anchor="mm")
+    
+    # 4. วนลูปวาดรายชื่อกลุ่ม (Loop Drawing)
+    sorted_df = df.sort_values("XP", ascending=False).reset_index(drop=True)
+    current_y = HEADER_H + 40
+    
+    for i, row in sorted_df.iterrows():
+        # กำหนดสีตามอันดับ
+        if i == 0:   badge_col = "#F59E0B" # ทอง
+        elif i == 1: badge_col = "#94A3B8" # เงิน
+        elif i == 2: badge_col = "#B45309" # ทองแดง
+        else:        badge_col = "#64748B" # ทั่วไป
+        
+        # สีคะแนน (แดงถ้าติดลบ / เขียวถ้าบวก)
+        score_col = "#EF4444" if row['XP'] < 0 else "#10B981"
+        
+        # วาดกล่องการ์ด (Card Background)
+        # เงา
+        draw.rounded_rectangle([(45, current_y+5), (W-45, current_y+165)], radius=30, fill='#E2E8F0')
+        # พื้นขาว
+        draw.rounded_rectangle([(40, current_y), (W-40, current_y+160)], radius=30, fill='white')
+        # แถบสีด้านซ้าย
+        draw.rounded_rectangle([(40, current_y), (70, current_y+160)], radius=30, fill=badge_col, corners=(True, False, False, True))
+        
+        # เขียนอันดับ (#1, #2...)
+        draw.text((130, current_y+80), f"#{i+1}", font=font_name, fill=badge_col, anchor="mm")
+        
+        # เขียนชื่อกลุ่ม
+        draw.text((220, current_y+60), str(row['GroupName']), font=font_name, fill='#1E293B', anchor="lm")
+        
+        # เขียนสมาชิก (ตัดคำถ้าเว้นวรรคยาว)
+        mem_txt = str(row['Members'])
+        if len(mem_txt) > 50: mem_txt = mem_txt[:50] + "..."
+        draw.text((220, current_y+115), mem_txt, font=font_detail, fill='#64748B', anchor="lm")
+        
+        # เขียนคะแนน
+        draw.text((W-80, current_y+80), f"{row['XP']}", font=font_score, fill=score_col, anchor="rm")
+        
+        # ขยับแกน Y ลงมาเพื่อวาดแถวถัดไป
+        current_y += ROW_H + 20
+        
+    # ใส่ Footer เครดิตเล็กๆ
+    draw.text((W/2, H-50), "Generated by Classroom OS", font=font_detail, fill='#94A3B8', anchor="mm")
+
+    # แปลงข้อมูลเป็น Bytes เพื่อส่งให้ปุ่ม Download
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    return buf.getvalue()
 # ==============================================================================
 # 1. SYSTEM CONFIGURATION & ULTRA UI
 # ==============================================================================
@@ -377,21 +470,41 @@ with tabs[0]:
 
 # --- TAB 2: LEADERBOARD ---
 with tabs[1]:
-    if not room_df.empty:
+    if room_df.empty:
+        st.info("ยังไม่มีข้อมูลกลุ่ม")
+    else:
+        # 1. ส่วนปุ่มดาวน์โหลด (วางไว้บนสุด)
+        col_btn, col_blank = st.columns([1, 2])
+        with col_btn:
+            # สร้างรูปภาพเตรียมไว้
+            img_data = generate_image(selected_room, room_df, rs)
+            
+            st.download_button(
+                label="🖼️ บันทึกรูปจัดอันดับ (Save Image)",
+                data=img_data,
+                file_name=f"Leaderboard_{selected_room}.png",
+                mime="image/png",
+                use_container_width=True,
+                type="primary" # ปุ่มสีเด่น
+            )
+        
+        st.markdown("---")
+
+        # 2. ส่วนแสดงผลบนหน้าเว็บ (เหมือนเดิม)
         sorted_df = room_df.sort_values("XP", ascending=False).reset_index(drop=True)
         for i, row in sorted_df.iterrows():
             r = rs.get_rank(row['XP'])
             pct, lbl = rs.get_progress(row['XP'])
             
-            # Badges
+            # แปลง Badges
             try: bdgs = json.loads(row['Badges'])
             except: bdgs = []
             icons = "".join([be.catalog[b] for b in bdgs if b in be.catalog])
             
-            border_col = "#ef4444" if row['XP'] < 0 else r['color']
+            col = "#ef4444" if row['XP'] < 0 else r['color']
             
             st.markdown(f"""
-            <div class="glass-card" style="border-left: 6px solid {border_col};">
+            <div class="glass-card" style="border-left: 6px solid {col};">
                 <div style="display:flex; justify-content:space-between;">
                     <div>
                         <span style="font-weight:bold; color:#64748b;">#{i+1}</span>
@@ -400,7 +513,7 @@ with tabs[1]:
                         <div style="margin-top:5px; font-size:1.2rem;">{icons}</div>
                     </div>
                     <div style="text-align:right;">
-                        <div style="font-size:1.8rem; font-weight:800; color:{border_col};">{row['XP']}</div>
+                        <div style="font-size:1.8rem; font-weight:800; color:{col};">{row['XP']}</div>
                         <span class="status-badge" style="background:{r['bg']}; color:{r['color']}">{r['th']}</span>
                     </div>
                 </div>
