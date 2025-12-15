@@ -11,7 +11,7 @@ import uuid
 # 1. SYSTEM CONFIGURATION & ULTRA UI
 # ==============================================================================
 st.set_page_config(
-    page_title="Classroom OS: God Mode",
+    page_title="Classroom OS: Gamification",
     page_icon="💎",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -290,7 +290,7 @@ room_df = df[df['Room'] == selected_room].copy()
 st.markdown(f"""
 <div class="hero-container">
     <div>
-        <h4 style="margin:0; opacity:0.8;">CLASSROOM OS: GOD MODE</h4>
+        <h4 style="margin:0; opacity:0.8;">CLASSROOM OS: Gamification </h4>
         <h1 style="margin:0; font-size:2.2rem;">{selected_room}</h1>
     </div>
     <div style="text-align:right;">
