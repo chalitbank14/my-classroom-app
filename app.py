@@ -6,38 +6,40 @@ from datetime import datetime
 import time
 import json
 import uuid
-# --- ส่วน Import ที่ต้องเพิ่ม ---
-from PIL import Image, ImageDraw, ImageFont
 import io
 
+# ส่วนเกี่ยวกับรูปภาพ
+from PIL import Image, ImageDraw, ImageFont
+from pilmoji import Pilmoji  
 # ==============================================================================
-# ฟังก์ชันสร้างรูปภาพจัดอันดับ (Image Generator) - เวอร์ชันละเอียด (ยศ + Progress)
+# ฟังก์ชันสร้างรูปภาพจัดอันดับ (Support Thai + Color Emojis 👑)
 # ==============================================================================
 def generate_image(room_name, df, rank_sys):
     # 1. จัดเรียงข้อมูล
     sorted_df = df.sort_values("XP", ascending=False).reset_index(drop=True)
     total_groups = len(sorted_df)
     
-    # 2. ตั้งค่าขนาด (ปรับความสูงแถวเพิ่มขึ้นเพื่อใส่รายละเอียด)
+    # 2. ตั้งค่าขนาด
     W = 1080
-    ROW_H = 240           # <--- เพิ่มความสูงเป็น 240 (เดิม 200)
+    ROW_H = 240
     HEADER_H = 450
     FOOTER_H = 100
     H = HEADER_H + (total_groups * ROW_H) + FOOTER_H
     
     img = Image.new('RGB', (W, H), color='#F1F5F9')
-    draw = ImageDraw.Draw(img)
+    # หมายเหตุ: เราจะไม่ใช้ draw = ImageDraw.Draw(img) แบบเดิมแล้ว
+    # แต่จะใช้ Pilmoji จัดการแทนทั้งหมดครับ
     
-    # 3. โหลดฟอนต์ (เพิ่มฟอนต์ขนาดกลางสำหรับชื่อยศ)
+    # 3. โหลดฟอนต์ (ต้องมีไฟล์ Sarabun-Bold.ttf ใน GitHub เหมือนเดิม)
     try:
         font_title = ImageFont.truetype("Sarabun-Bold.ttf", 140)
         font_sub = ImageFont.truetype("Sarabun-Bold.ttf", 60)
-        font_rank_num = ImageFont.truetype("Sarabun-Bold.ttf", 70)  # เลขอันดับ #1
-        font_name = ImageFont.truetype("Sarabun-Bold.ttf", 80)      # ชื่อกลุ่ม
-        font_detail = ImageFont.truetype("Sarabun-Regular.ttf", 45) # สมาชิก
-        font_score = ImageFont.truetype("Sarabun-Bold.ttf", 110)    # คะแนน XP
-        font_rank_name = ImageFont.truetype("Sarabun-Bold.ttf", 55) # <--- ชื่อยศ (ใหม่)
-        font_progress = ImageFont.truetype("Sarabun-Regular.ttf", 40) # <--- ข้อความ Progress (ใหม่)
+        font_rank_num = ImageFont.truetype("Sarabun-Bold.ttf", 70)
+        font_name = ImageFont.truetype("Sarabun-Bold.ttf", 80)
+        font_detail = ImageFont.truetype("Sarabun-Regular.ttf", 45)
+        font_score = ImageFont.truetype("Sarabun-Bold.ttf", 110)
+        font_rank_name = ImageFont.truetype("Sarabun-Bold.ttf", 55)
+        font_progress = ImageFont.truetype("Sarabun-Regular.ttf", 40)
     except:
         font_title = ImageFont.load_default()
         font_sub = ImageFont.load_default()
@@ -48,68 +50,64 @@ def generate_image(room_name, df, rank_sys):
         font_rank_name = ImageFont.load_default()
         font_progress = ImageFont.load_default()
 
-    # 4. วาดส่วนหัว (Header)
-    draw.rectangle([(0, 0), (W, HEADER_H)], fill='#4F46E5')
-    draw.ellipse([(800, -100), (1300, 400)], fill='#6366F1')
-    draw.ellipse([(-200, 100), (300, 600)], fill='#4338CA')
-    
-    draw.text((W/2, 130), f"LEADERBOARD", font=font_sub, fill='#C7D2FE', anchor="mm")
-    draw.text((W/2, 260), f"{room_name}", font=font_title, fill='white', anchor="mm")
-    
-    # 5. วนลูปวาดรายชื่อกลุ่ม
-    current_y = HEADER_H + 30
-    
-    for i, row in sorted_df.iterrows():
-        # ดึงข้อมูลยศและ Progress
-        rank_info = rank_sys.get_rank(row['XP'])
-        pct, progress_label = rank_sys.get_progress(row['XP'])
+    # เริ่มเรียกใช้ Pilmoji (พระเอกที่จะวาดอีโมจิ)
+    with Pilmoji(img) as pilmoji:
         
-        # กำหนดสีเหรียญ
-        if i == 0:   badge_col = "#F59E0B" # ทอง
-        elif i == 1: badge_col = "#94A3B8" # เงิน
-        elif i == 2: badge_col = "#B45309" # ทองแดง
-        else:        badge_col = "#64748B" # ทั่วไป
+        # 4. วาดส่วนหัว (Header) - วาดสี่เหลี่ยมต้องใช้ ImageDraw ปกติช่วยก่อน
+        draw = ImageDraw.Draw(img) 
+        draw.rectangle([(0, 0), (W, HEADER_H)], fill='#4F46E5')
+        draw.ellipse([(800, -100), (1300, 400)], fill='#6366F1')
+        draw.ellipse([(-200, 100), (300, 600)], fill='#4338CA')
         
-        # สีคะแนน
-        score_col = "#EF4444" if row['XP'] < 0 else "#10B981"
+        # ข้อความหัว (ใช้อีโมจิได้แล้ว!)
+        pilmoji.text((W/2, 130), f"🏆 LEADERBOARD", font=font_sub, fill='#C7D2FE', anchor="mm")
+        pilmoji.text((W/2, 260), f"{room_name}", font=font_title, fill='white', anchor="mm")
         
-        # วาดกล่องการ์ด
-        # เงา
-        draw.rounded_rectangle([(45, current_y+8), (W-45, current_y+218)], radius=30, fill='#CBD5E1')
-        # พื้นขาว
-        draw.rounded_rectangle([(40, current_y), (W-40, current_y+210)], radius=30, fill='white')
-        # แถบสีด้านซ้าย
-        draw.rounded_rectangle([(40, current_y), (70, current_y+210)], radius=30, fill=badge_col, corners=(True, False, False, True))
+        # 5. วนลูปวาดรายชื่อกลุ่ม
+        current_y = HEADER_H + 30
         
-        # --- ข้อมูลฝั่งซ้าย (ชื่อกลุ่ม / สมาชิก) ---
-        
-        # อันดับ (#1, #2...)
-        draw.text((140, current_y+105), f"#{i+1}", font=font_rank_num, fill=badge_col, anchor="mm")
-        
-        # ชื่อกลุ่ม
-        draw.text((230, current_y+70), str(row['GroupName']), font=font_name, fill='#1E293B', anchor="lm")
-        
-        # สมาชิก
-        members = str(row['Members'])
-        if len(members) > 40: members = members[:38] + "..."
-        draw.text((230, current_y+140), members, font=font_detail, fill='#64748B', anchor="lm")
-        
-        # --- ข้อมูลฝั่งขวา (XP / ชื่อยศ / Progress) ---
-        
-        # 1. คะแนน XP (ตัวใหญ่สุด)
-        draw.text((W-80, current_y+70), f"{row['XP']}", font=font_score, fill=score_col, anchor="rm")
-        
-        # 2. ชื่อยศ (เช่น 👑 ประธานรุ่น) - อยู่ใต้คะแนน
-        draw.text((W-80, current_y+135), rank_info['th'], font=font_rank_name, fill=rank_info['color'], anchor="rm")
-        
-        # 3. Progress (เช่น Next: Manager 150/300) - อยู่ล่างสุด
-        draw.text((W-80, current_y+180), progress_label, font=font_progress, fill='#94A3B8', anchor="rm")
-        
-        # ขยับแกน Y
-        current_y += ROW_H 
+        for i, row in sorted_df.iterrows():
+            rank_info = rank_sys.get_rank(row['XP'])
+            pct, progress_label = rank_sys.get_progress(row['XP'])
+            
+            # สีและพื้นหลัง
+            if i == 0:   badge_col = "#F59E0B"
+            elif i == 1: badge_col = "#94A3B8"
+            elif i == 2: badge_col = "#B45309"
+            else:        badge_col = "#64748B"
+            score_col = "#EF4444" if row['XP'] < 0 else "#10B981"
+            
+            # วาดกล่อง (ใช้ draw ปกติ)
+            draw.rounded_rectangle([(45, current_y+8), (W-45, current_y+218)], radius=30, fill='#CBD5E1')
+            draw.rounded_rectangle([(40, current_y), (W-40, current_y+210)], radius=30, fill='white')
+            draw.rounded_rectangle([(40, current_y), (70, current_y+210)], radius=30, fill=badge_col, corners=(True, False, False, True))
+            
+            # --- ใช้ pilmoji.text วาดข้อความ (รองรับอีโมจิ) ---
+            
+            # อันดับ
+            pilmoji.text((140, current_y+105), f"#{i+1}", font=font_rank_num, fill=badge_col, anchor="mm")
+            
+            # ชื่อกลุ่ม (ไม่ต้อง Clean Text แล้ว! ใส่อีโมจิได้เลย)
+            pilmoji.text((230, current_y+70), str(row['GroupName']), font=font_name, fill='#1E293B', anchor="lm")
+            
+            # สมาชิก
+            members = str(row['Members'])
+            if len(members) > 40: members = members[:38] + "..."
+            pilmoji.text((230, current_y+140), members, font=font_detail, fill='#64748B', anchor="lm")
+            
+            # คะแนน XP
+            pilmoji.text((W-80, current_y+70), f"{row['XP']}", font=font_score, fill=score_col, anchor="rm")
+            
+            # ชื่อยศ (โชว์มงกุฎ 👑 ได้แล้ว)
+            pilmoji.text((W-80, current_y+135), rank_info['th'], font=font_rank_name, fill=rank_info['color'], anchor="rm")
+            
+            # Progress
+            pilmoji.text((W-80, current_y+180), progress_label, font=font_progress, fill='#94A3B8', anchor="rm")
+            
+            current_y += ROW_H 
 
-    # 6. Footer
-    draw.text((W/2, H-50), f"Generated on {datetime.now().strftime('%d/%m/%Y %H:%M')}", font=font_detail, fill='#94A3B8', anchor="mm")
+        # Footer
+        pilmoji.text((W/2, H-50), f"Generated by Classroom OS 🚀", font=font_detail, fill='#94A3B8', anchor="mm")
 
     buf = io.BytesIO()
     img.save(buf, format='PNG')
