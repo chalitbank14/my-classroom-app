@@ -3,4 +3,5 @@ pandas
 altair
 st-gsheets-connection
 Pillow
-pilmoji   
+pilmoji
+emoji==1.7.0 
