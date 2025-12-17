@@ -12,7 +12,7 @@ import io
 from PIL import Image, ImageDraw, ImageFont
 from pilmoji import Pilmoji  
 # ==============================================================================
-# ฟังก์ชันสร้างรูปภาพ (Widescreen Edition: กว้าง 1400px แก้ตัวหนังสือตก)
+# ฟังก์ชันสร้างรูปภาพ (Fix: Header Layout & Spacing)
 # ==============================================================================
 def generate_image(room_name, df, rank_sys):
     # 1. Config
@@ -24,25 +24,29 @@ def generate_image(room_name, df, rank_sys):
     COLOR_CARD = "#FFFFFF"
     COLOR_SHADOW = "#CBD5E1"
     
-    # --- ปรับขนาดใหม่ (ให้กว้างขึ้น) ---
-    W = 1400                   # <--- ขยายความกว้างเป็น 1400 (เดิม 1080)
-    ROW_H = 300                # <--- เพิ่มความสูงแถวเป็น 300 (เดิม 280)
-    HEADER_H = 500             # <--- หัวกระดาษใหญ่ขึ้นสมส่วน
+    # --- ปรับขนาดใหม่ ---
+    W = 1400
+    ROW_H = 300
+    HEADER_H = 650             # <--- เพิ่มความสูงส่วนหัวเป็น 650 (เดิม 500) ให้โล่งๆ
     FOOTER_H = 150
     H = HEADER_H + (len(sorted_df) * ROW_H) + FOOTER_H
     
     img = Image.new('RGB', (W, H), color=COLOR_BG)
     
-    # 2. Font Loading (ปรับขนาดฟอนต์ให้สมดุลกับภาพใหญ่)
+    # 2. Font Loading
     try:
-        f_header = ImageFont.truetype("Sarabun-Bold.ttf", 160)
-        f_sub = ImageFont.truetype("Sarabun-Bold.ttf", 70)
+        # โหลดฟอนต์หลายขนาดเพื่อความสวยงาม
+        f_icon = ImageFont.truetype("Sarabun-Bold.ttf", 150) # สำหรับถ้วยรางวัลใหญ่
+        f_header = ImageFont.truetype("Sarabun-Bold.ttf", 140) # ชื่อห้อง
+        f_sub = ImageFont.truetype("Sarabun-Bold.ttf", 60)   # คำว่า Leaderboard
+        
         f_rank = ImageFont.truetype("Sarabun-Bold.ttf", 90)
-        f_name = ImageFont.truetype("Sarabun-Bold.ttf", 90)      # ชื่อกลุ่มใหญ่ขึ้น
-        f_mem = ImageFont.truetype("Sarabun-Regular.ttf", 50)    # สมาชิกอ่านง่ายขึ้น
+        f_name = ImageFont.truetype("Sarabun-Bold.ttf", 85)
+        f_mem = ImageFont.truetype("Sarabun-Regular.ttf", 45)
         f_score = ImageFont.truetype("Sarabun-Bold.ttf", 110)
         f_badge = ImageFont.truetype("Sarabun-Bold.ttf", 55)
     except:
+        f_icon = ImageFont.load_default()
         f_header = ImageFont.load_default()
         f_sub = ImageFont.load_default()
         f_rank = ImageFont.load_default()
@@ -54,15 +58,28 @@ def generate_image(room_name, df, rank_sys):
     with Pilmoji(img) as pilmoji:
         draw = ImageDraw.Draw(img)
         
-        # 3. Header
+        # 3. Header Background
         draw.rectangle([(0, 0), (W, HEADER_H)], fill=COLOR_HEADER)
+        # ตกแต่งกราฟิกพื้นหลัง
         draw.ellipse([(1000, -100), (1600, 500)], fill='#4F46E5')
-        draw.ellipse([(-100, 200), (400, 700)], fill='#3730A3')
+        draw.ellipse([(-100, 300), (400, 800)], fill='#3730A3')
         
-        pilmoji.text((W//2, 150), "🏆 CLASSROOM LEADERBOARD", font=f_sub, fill='#A5B4FC', anchor="mm")
-        pilmoji.text((W//2, 280), f"{room_name}", font=f_header, fill='white', anchor="mm")
+        # --- จัดระเบียบส่วนหัวใหม่ (แยกบรรทัดชัดเจน) ---
         
-        # 4. Rows
+        # บรรทัด 1: ถ้วยรางวัลใหญ่ (ตรงกลางบนสุด)
+        # ใช้ Y=120
+        pilmoji.text((W//2, 120), "🏆", font=f_icon, fill='white', anchor="mm")
+        
+        # บรรทัด 2: คำว่า LEADERBOARD (ใต้ถ้วย)
+        # ใช้ Y=250
+        pilmoji.text((W//2, 250), "CLASSROOM LEADERBOARD", font=f_sub, fill='#A5B4FC', anchor="mm")
+        
+        # บรรทัด 3: ชื่อห้อง (ตัวใหญ่สุด ล่างสุดของหัว)
+        # ใช้ Y=450 (เว้นระยะห่างมาเยอะๆ จะได้ไม่ทับ)
+        pilmoji.text((W//2, 450), f"{room_name}", font=f_header, fill='white', anchor="mm")
+        
+        
+        # 4. Rows (เริ่มวาดรายการต่อจากส่วนหัว)
         current_y = HEADER_H + 50
         
         for i, row in sorted_df.iterrows():
@@ -77,34 +94,33 @@ def generate_image(room_name, df, rank_sys):
             xp_col = "#EF4444" if row['XP'] < 0 else "#10B981"
             
             # Card Box
-            # ขยายการ์ดให้เต็มความกว้างใหม่
             card_w = W - 80 
             card_x = 40
             
             draw.rounded_rectangle([(card_x+5, current_y+10), (card_x+card_w+5, current_y+ROW_H-10)], radius=35, fill=COLOR_SHADOW)
             draw.rounded_rectangle([(card_x, current_y), (card_x+card_w, current_y+ROW_H-20)], radius=35, fill=COLOR_CARD)
             
-            # --- Column 1: Rank Circle ---
+            # Rank Circle
             circle_x = 150
             circle_y = current_y + 110
             r = 80
             draw.ellipse([(circle_x-r, circle_y-r), (circle_x+r, circle_y+r)], fill=theme_col)
             pilmoji.text((circle_x, circle_y), str(i+1), font=f_rank, fill="white", anchor="mm")
             
-            # --- Column 2: Info (ขยายพื้นที่ให้กว้างขึ้น) ---
+            # Group Info
             text_x = 280
             
             # ชื่อกลุ่ม
             grp_name = str(row['GroupName'])
             pilmoji.text((text_x, current_y+60), grp_name, font=f_name, fill="#1E293B", anchor="lm")
             
-            # สมาชิก (ตัดคำให้น้อยลง เพราะที่กว้างขึ้น)
+            # สมาชิก
             mem = str(row['Members'])
-            if len(mem) > 60: mem = mem[:58] + "..." # เพิ่มลิมิตตัวอักษร
+            if len(mem) > 60: mem = mem[:58] + "..."
             pilmoji.text((text_x, current_y+135), mem, font=f_mem, fill="#64748B", anchor="lm")
             
             # Progress Bar
-            bar_w = 650 # หลอดกว้างขึ้น
+            bar_w = 650
             bar_h = 16
             bar_y = current_y + 190
             
@@ -116,7 +132,7 @@ def generate_image(room_name, df, rank_sys):
             # Badge Name
             pilmoji.text((text_x + bar_w + 30, bar_y+8), rank_info['th'], font=f_badge, fill=rank_info['color'], anchor="lm")
 
-            # --- Column 3: Score (ชิดขวาสุด) ---
+            # Score
             pilmoji.text((W-100, current_y+90), f"{row['XP']}", font=f_score, fill=xp_col, anchor="rm")
             pilmoji.text((W-100, current_y+160), "XP", font=f_badge, fill="#94A3B8", anchor="rm")
 
