@@ -3,3 +3,4 @@ pandas
 altair
 st-gsheets-connection
 Pillow
+pilmoji   
