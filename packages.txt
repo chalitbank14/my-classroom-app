@@ -1,0 +1,4 @@
+libraqm-dev
+libfreetype6-dev
+libharfbuzz-dev
+libfribidi-dev
