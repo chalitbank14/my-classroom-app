@@ -12,7 +12,7 @@ import io
 from PIL import Image, ImageDraw, ImageFont
 from pilmoji import Pilmoji  
 # ==============================================================================
-# ฟังก์ชันสร้างรูปภาพ (Fix Thai Vowels: ปรับ Anchor & Font Size)
+# ฟังก์ชันสร้างรูปภาพ (Smart Resize: ปรับขนาดฟอนต์ชื่อกลุ่มอัตโนมัติ)
 # ==============================================================================
 def generate_image(room_name, df, rank_sys):
     # 1. Config
@@ -31,26 +31,20 @@ def generate_image(room_name, df, rank_sys):
     
     img = Image.new('RGB', (W, H), color=COLOR_BG)
     
-    # 2. Font Loading (ลดขนาดฟอนต์ลงเล็กน้อย ลดการเบียด)
-    try:
-        f_icon = ImageFont.truetype("Sarabun-Bold.ttf", 200)
-        f_sub = ImageFont.truetype("Sarabun-Bold.ttf", 60)
-        f_header = ImageFont.truetype("Sarabun-Bold.ttf", 150)
-        
-        f_rank = ImageFont.truetype("Sarabun-Bold.ttf", 85)
-        f_name = ImageFont.truetype("Sarabun-Bold.ttf", 80)  # ลดจาก 85 -> 80
-        f_mem = ImageFont.truetype("Sarabun-Regular.ttf", 45)
-        f_score = ImageFont.truetype("Sarabun-Bold.ttf", 100) # ลดจาก 110 -> 100
-        f_badge = ImageFont.truetype("Sarabun-Bold.ttf", 50)
-    except:
-        f_icon = ImageFont.load_default()
-        f_sub = ImageFont.load_default()
-        f_header = ImageFont.load_default()
-        f_rank = ImageFont.load_default()
-        f_name = ImageFont.load_default()
-        f_mem = ImageFont.load_default()
-        f_score = ImageFont.load_default()
-        f_badge = ImageFont.load_default()
+    # 2. Font Loading (โหลดเฉพาะตัวหลัก ตัวอื่นจะโหลดใหม่ในลูป)
+    def load_font(name, size):
+        try: return ImageFont.truetype(name, size)
+        except: return ImageFont.load_default()
+
+    f_icon = load_font("Sarabun-Bold.ttf", 200)
+    f_sub = load_font("Sarabun-Bold.ttf", 65)
+    f_header = load_font("Sarabun-Bold.ttf", 160)
+    
+    f_rank = load_font("Sarabun-Bold.ttf", 90)
+    # f_name ไม่โหลดตรงนี้ เพราะจะปรับขนาดเอง
+    f_mem = load_font("Sarabun-Regular.ttf", 50)
+    f_score = load_font("Sarabun-Bold.ttf", 110)
+    f_badge = load_font("Sarabun-Bold.ttf", 55)
 
     with Pilmoji(img) as pilmoji:
         draw = ImageDraw.Draw(img)
@@ -60,11 +54,11 @@ def generate_image(room_name, df, rank_sys):
         draw.ellipse([(1000, -100), (1600, 500)], fill='#4F46E5')
         draw.ellipse([(-100, 300), (400, 800)], fill='#3730A3')
         
-        pilmoji.text((W//2, 200), "🏆", font=f_icon, fill='white', anchor="mm")
-        pilmoji.text((W//2, 380), "CLASSROOM LEADERBOARD", font=f_sub, fill='#A5B4FC', anchor="mm")
+        pilmoji.text((W//2, 180), "🏆", font=f_icon, fill='white', anchor="mm")
+        pilmoji.text((W//2, 360), "CLASSROOM LEADERBOARD", font=f_sub, fill='#A5B4FC', anchor="mm")
         pilmoji.text((W//2, 550), f"{room_name}", font=f_header, fill='white', anchor="mm")
         
-        # 4. Rows
+        # 4. Rows Loop
         current_y = HEADER_H + 50
         
         for i, row in sorted_df.iterrows():
@@ -84,19 +78,36 @@ def generate_image(room_name, df, rank_sys):
             draw.rounded_rectangle([(card_x+5, current_y+10), (card_x+card_w+5, current_y+ROW_H-15)], radius=35, fill=COLOR_SHADOW)
             draw.rounded_rectangle([(card_x, current_y), (card_x+card_w, current_y+ROW_H-25)], radius=35, fill=COLOR_CARD)
             
-            # --- Rank Circle ---
+            # --- Column 1: Rank Circle ---
             circle_x = 150
             circle_y = current_y + 120
             r = 80
             draw.ellipse([(circle_x-r, circle_y-r), (circle_x+r, circle_y+r)], fill=theme_col)
             pilmoji.text((circle_x, circle_y), str(i+1), font=f_rank, fill="white", anchor="mm")
             
-            # --- Group Info (ใช้ anchor='ls' คือยึดเส้นบรรทัด เพื่อให้สระบนไม่ตกขอบ) ---
+            # --- Column 2: Info (Smart Name Resizing) ---
             text_x = 280
-            
-            # ชื่อกลุ่ม (Y ปรับใหม่สำหรับ anchor='ls')
             grp_name = str(row['GroupName'])
-            pilmoji.text((text_x, current_y+100), grp_name, font=f_name, fill="#1E293B", anchor="ls")
+            
+            # [LOGIC ใหม่] ปรับขนาดฟอนต์ชื่อกลุ่ม
+            name_size = 85 # ขนาดเริ่มต้น
+            max_name_width = 750 # ความกว้างสูงสุดที่ยอมรับได้ (ไม่ให้ชนคะแนน)
+            
+            while True:
+                # ลองโหลดฟอนต์ขนาดปัจจุบัน
+                f_dynamic_name = load_font("Sarabun-Bold.ttf", name_size)
+                # วัดความยาวข้อความ
+                text_w = f_dynamic_name.getlength(grp_name)
+                
+                # ถ้าความยาวพอดี หรือ ฟอนต์เล็กเกินไปแล้ว -> พอ
+                if text_w <= max_name_width or name_size <= 40:
+                    break
+                
+                # ถ้ายังยาวไป ลดขนาดลงทีละ 5
+                name_size -= 5
+            
+            # วาดด้วยฟอนต์ที่คำนวณมาแล้ว
+            pilmoji.text((text_x, current_y+100), grp_name, font=f_dynamic_name, fill="#1E293B", anchor="ls")
             
             # สมาชิก
             mem = str(row['Members'])
@@ -116,7 +127,7 @@ def generate_image(room_name, df, rank_sys):
             # Badge Name
             pilmoji.text((text_x + bar_w + 30, bar_y+14), rank_info['th'], font=f_badge, fill=rank_info['color'], anchor="ls")
 
-            # --- Score (ใช้ anchor='rs' ชิดขวา+เส้นบรรทัด) ---
+            # --- Column 3: Score ---
             pilmoji.text((W-100, current_y+110), f"{row['XP']}", font=f_score, fill=xp_col, anchor="rs")
             pilmoji.text((W-100, current_y+160), "XP", font=f_badge, fill="#94A3B8", anchor="rs")
 
