@@ -5,4 +5,3 @@ st-gsheets-connection
 Pillow
 pilmoji
 emoji
-openpyxl
