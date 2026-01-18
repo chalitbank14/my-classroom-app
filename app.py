@@ -81,7 +81,7 @@ class RankSystem:
             {"name": "MANAGER", "th": "👔 หัวหน้าแผนก", "min_xp": 300, "color": "#3b82f6", "bg": "#dbeafe"},
             {"name": "EMPLOYEE", "th": "👨‍💼 พนักงาน", "min_xp": 100, "color": "#10b981", "bg": "#d1fae5"},
             {"name": "INTERN", "th": "👶 เด็กฝึกงาน", "min_xp": 0, "color": "#64748b", "bg": "#f1f5f9"},
-            {"name": "PROBATION", "th": "⚠️ ทัณฑ์บน", "min_xp": -999999, "color": "#ef4444", "bg": "#fee2e2"}
+            {"name": "PROBATION", "th": "⚠️ ทัณฑ์บน", "min_xp": -300, "color": "#ef4444", "bg": "#fee2e2"}
         ]
     def get_rank(self, xp):
         if xp < 0: return self.ranks[-1]
@@ -214,7 +214,8 @@ def generate_image(room_name, df, rank_sys):
     f_mem = load_font("Sarabun-Regular.ttf", 50)
     f_score = load_font("Sarabun-Bold.ttf", 110)
     f_badge = load_font("Sarabun-Bold.ttf", 55)
-
+    f_privilege = load_font("Sarabun-Regular.ttf", 40) # Font สำหรับสิทธิพิเศษ
+    
     # Draw Header
     draw.rectangle([(0, 0), (W, HEADER_H)], fill='#4338CA')
     draw.ellipse([(1000, -100), (1600, 500)], fill='#4F46E5')
@@ -255,15 +256,23 @@ def generate_image(room_name, df, rank_sys):
         
         mem = str(row['Members'])
         if len(mem)>60: mem=mem[:58]+"..."
-        draw.text((tx, curr_y+170), clean(mem), font=f_mem, fill="#64748B", anchor="ls")
+        draw.text((tx, curr_y+160), clean(mem), font=f_mem, fill="#64748B", anchor="ls")
         
         # Progress Bar
-        by = curr_y + 220
+        by = curr_y + 210
+        bar_w = 600 # ลดความกว้างหลอดนิดนึงเพื่อให้มีที่ด้านขวา
         draw.rounded_rectangle([(tx, by), (tx+650, by+16)], radius=8, fill="#F1F5F9")
         if pct>0: draw.rounded_rectangle([(tx, by), (tx+int(650*pct), by+16)], radius=8, fill=rank_info['color'])
-        draw.text((tx+680, by+14), clean(rank_info['th']), font=f_badge, fill=rank_info['color'], anchor="ls")
+        text_start_x = tx + bar_w + 30
+        draw.text((text_start_x, by-5), clean(rank_info['th']), font=f_badge, fill=rank_info['color'], anchor="lt")
         
-        # Score
+        # วาดสิทธิพิเศษ (ล่าง) - ดึงจาก desc ที่เพิ่มใน RankSystem
+        priv_text = rank_info.get('desc', '')
+        # ถ้าข้อความยาวเกินไป ตัดให้สั้นหน่อย
+        if len(priv_text) > 35: priv_text = priv_text[:33] + "..."
+        draw.text((text_start_x, by+55), priv_text, font=f_privilege, fill="#64748B", anchor="ls")
+        
+        # Score Column
         draw.text((W-100, curr_y+110), f"{row['XP']}", font=f_score, fill=xc, anchor="rs")
         draw.text((W-100, curr_y+160), "XP", font=f_badge, fill="#94A3B8", anchor="rs")
         
