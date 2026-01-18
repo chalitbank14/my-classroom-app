@@ -705,10 +705,6 @@ def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manage
 # MODULE 6: PRESENTATION LAYER (STREAMLIT UI)
 # ==============================================================================
 
-c# ==============================================================================
-# MODULE 6: PRESENTATION LAYER (STREAMLIT UI)
-# ==============================================================================
-
 class UIManager:
     """
     Manages the Streamlit interface, layout, and user interaction flow.
