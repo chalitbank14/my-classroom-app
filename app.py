@@ -356,10 +356,10 @@ with tabs[3]:
     st.markdown("## 🏛️ ทำเนียบสิทธิพิเศษ")
     ranks_data = [
         ("👶 เด็กฝึกงาน", "0+ XP", "#64748b", "#f1f5f9", "🔍 สิทธิ์ Check-up", "ครูช่วยตรวจทานเบื้องต้นก่อนส่งจริง"),
-        ("👨‍💼 พนักงาน", "100+ XP", "#10b981", "#d1fae5", "⏰ สิทธิ์ Time Extension", "ส่งช้าได้ 1 สัปดาห์ ไม่หักคะแนน"),
-        ("👔 หัวหน้าแผนก", "300+ XP", "#3b82f6", "#dbeafe", "🔄 สิทธิ์ Second Chance", "สอบแก้ตัวหรือทำใบงานใหม่ได้"),
+        ("👨‍💼 พนักงาน", "100+ XP", "#10b981", "#d1fae5", "⏰ สิทธิ์ Time Extension", "ส่งช้าได้ 2 สัปดาห์ ไม่หักคะแนน"),
+        ("👔 หัวหน้าแผนก", "300+ XP", "#3b82f6", "#dbeafe", "🔄 สิทธิ์ Second Chance", "สอบแก้ตัวหรือทำใบงานใหม่ได้ ้เลือกได้ 1 งานต่อ 1 หน่วยการเรียนรู้"),
         ("💼 หัวหน้าฝ่าย", "600+ XP", "#8b5cf6", "#f3e8ff", "✂️ สิทธิ์ Workload Cut", "ลดภาระงาน 50% แต่ได้คะแนนเต็ม"),
-        ("👑 ประธาน", "1000+ XP", "#f59e0b", "#fef3c7", "🛡️ Immunity & Bonus", "ไม่ทำ 3 งานได้ + โบนัสฟรีทุกงาน")
+        ("👑 ประธาน", "1000+ XP", "#f59e0b", "#fef3c7", "🛡️ Immunity & Bonus", "ไม่ทำ 3 งานได้ + โบนัสฟรี 1 คะแนนทุกงานถ้าส่ง")
     ]
     for name, xp, col, bg, title, desc in ranks_data:
         st.markdown(f"<div class='rank-detail-card' style='border-left-color: {col};'><h3 style='color:{col}; margin:0;'>{name}</h3><span class='status-badge' style='background:{bg}; color:{col};'>{xp}</span><hr style='margin:10px 0;'><h4>{title}</h4><p>{desc}</p></div>", unsafe_allow_html=True)
