@@ -1205,50 +1205,84 @@ class UIManager:
             return
 
         # 1. KPI Metrics
-        total_xp = room_df['XP'].sum()
-        avg_xp = room_df['XP'].mean()
-        
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Class XP", f"{total_xp:,}")
-        col2.metric("Average XP", f"{avg_xp:.0f}")
-        col3.metric("Active Teams", len(room_df))
+        # ใช้ try-except เพื่อกันค่าที่ไม่ใช่ตัวเลข
+        try:
+            total_xp = room_df['XP'].sum()
+            avg_xp = room_df['XP'].mean()
+        except:
+            total_xp = 0
+            avg_xp = 0
+            
+        top_team_row = room_df.loc[room_df['XP'].idxmax()] if not room_df.empty else None
+        top_team = top_team_row['GroupName'] if top_team_row is not None else "-"
+        active_teams = len(room_df[room_df['XP'] != 0])
+
+        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+        kpi1.metric("🏆 Leading Team", top_team)
+        kpi2.metric("✨ Total Class XP", f"{int(total_xp):,}")
+        kpi3.metric("📊 Average XP", f"{int(avg_xp):,}")
+        kpi4.metric("🔥 Active Teams", f"{active_teams} / {len(room_df)}")
         
         st.divider()
         
-        # 2. Bar Chart (แก้ไขใหม่: บังคับแปลงข้อมูลก่อนวาดกราฟ)
-        st.subheader("📊 Team Performance")
+        # 2. XP History Chart (Timeline) - Fix Schema Validation Error
+        st.subheader("🏎️ XP Race Timeline")
+        st.caption("Track progress over time.")
         
-        # สร้างข้อมูลชุดใหม่ที่สะอาดแน่นอน (Clean Data)
-        clean_data = []
+        history_data = []
         for _, row in room_df.iterrows():
             try:
-                # บังคับแปลง XP เป็นตัวเลข (ถ้าไม่ได้ให้เป็น 0)
-                safe_xp = int(row['XP'])
-            except:
-                safe_xp = 0
-            
-            clean_data.append({
-                "Team": str(row['GroupName']), # บังคับเป็นข้อความ
-                "XP": safe_xp
-            })
-            
-        # สร้างกราฟจากข้อมูลที่ Clean แล้ว
-        chart_df = pd.DataFrame(clean_data)
+                # แปลง JSON string เป็น list, ถ้าพังให้เป็น list ว่าง
+                log_str = str(row['HistoryLog'])
+                if not log_str.strip() or log_str == "nan":
+                    logs = []
+                else:
+                    logs = json.loads(log_str)
+                
+                # วนลูปดึงข้อมูลประวัติ
+                for log in logs:
+                    ts_val = pd.to_datetime(log.get('ts'), errors='coerce')
+                    
+                    # กรองข้อมูลขยะ: ต้องมีเวลา และ ยอดเงินต้องแปลงเป็น int ได้
+                    if ts_val is not pd.NaT:
+                        try:
+                            balance_val = int(log.get('balance', 0))
+                        except:
+                            balance_val = 0
+                            
+                        history_data.append({
+                            "Team": str(row['GroupName']),
+                            "Timestamp": ts_val,
+                            "Total XP": balance_val
+                        })
+            except Exception as e:
+                # ข้ามแถวที่มีปัญหาไปเลย กันกราฟพัง
+                continue
         
-        if not chart_df.empty:
-            chart = alt.Chart(chart_df).mark_bar().encode(
-                # :N = Nominal (ชื่อ), :Q = Quantitative (ตัวเลข) -> ใส่ Type ให้ชัดเจน
-                x=alt.X('Team:N', sort='-y', title='Team Name'),
-                y=alt.Y('XP:Q', title='Total XP'),
-                color=alt.Color('XP:Q', scale={'scheme': 'viridis'}, legend=None),
-                tooltip=['Team', 'XP']
+        if history_data:
+            chart_df = pd.DataFrame(history_data)
+            
+            # Create Altair Line Chart with Strict Typing
+            chart = alt.Chart(chart_df).mark_line(
+                point=alt.OverlayMarkDef(filled=False, fill="white", strokeWidth=2)
+            ).encode(
+                # ระบุ Type ชัดเจน :T (Time), :Q (Quantitative), :N (Nominal)
+                x=alt.X('Timestamp:T', title='Date & Time', axis=alt.Axis(format='%d/%m %H:%M')),
+                y=alt.Y('Total XP:Q', title='Accumulated XP'),
+                color=alt.Color('Team:N', title='Team Name', scale={"scheme": "category20"}),
+                tooltip=[
+                    alt.Tooltip('Timestamp:T', format='%d/%m/%Y %H:%M', title='Time'),
+                    alt.Tooltip('Team:N', title='Team Name'),
+                    alt.Tooltip('Total XP:Q', title='XP Balance', format=',')
+                ]
             ).properties(
-                use_container_width=True,
-                height=400
-            )
+                height=450,
+                title="Score Progression History"
+            ).interactive()
+            
             st.altair_chart(chart, use_container_width=True)
         else:
-            st.info("No valid data to display chart.")
+            st.info("Not enough history data to generate timeline chart yet.")
 
     def _render_privileges_tab(self):
         st.header("ℹ️ Rank & Privilege System")
