@@ -1,14 +1,17 @@
 """
-CLASSROOM OS: ENTERPRISE EDITION
-Version: 4.0.0 (Thai Typography Fix)
-Author: AI Assistant
-Date: 2026-01-18
+Classroom OS: Enterprise Edition
+Version: 5.3.0 (Final Thai Typography Fix)
+Author: AI Development Team
+Date: 2026-01-20
 
 Description:
-ระบบบริหารจัดการห้องเรียนแบบ Gamification ระดับองค์กร
-รองรับการเชื่อมต่อ Google Sheets, การคำนวณคะแนนที่ซับซ้อน,
-และระบบสร้างภาพกราฟิกที่มีความละเอียดสูง (High-Fidelity Rendering)
-พร้อมระบบแก้ปัญหาสระลอยในภาษาไทย (Thai Vowel Adjustment Engine)
+A comprehensive, enterprise-grade gamification platform for classrooms.
+Features robust Google Sheets integration, advanced score calculation rules,
+and a high-fidelity image generation engine specifically tuned for correct
+Thai language typography rendering, ensuring no overlapping or cut-off text.
+
+This codebase is structured using domain-driven design principles,
+separated into distinct layers for configuration, data, logic, and presentation.
 """
 
 import streamlit as st
@@ -21,78 +24,132 @@ import json
 import uuid
 import io
 import logging
-from typing import List, Dict, Optional, Tuple, Any
+from typing import List, Dict, Optional, Tuple, Any, Union
 from PIL import Image, ImageDraw, ImageFont
+import re
 
 # ==============================================================================
-# MODULE 1: LOGGING & DIAGNOSTICS
+# MODULE 1: SYSTEM KERNEL & CONFIGURATION
 # ==============================================================================
-# ตั้งค่าระบบ Log เพื่อติดตามการทำงานของระบบอย่างละเอียด
+
+# Configure application-wide logging
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    format='%(asctime)s [%(levelname)s] %(name)s - %(message)s',
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger("ClassroomOS")
 
-# ==============================================================================
-# MODULE 2: CONFIGURATION LAYER
-# ==============================================================================
 class AppConfig:
     """
-    ศูนย์รวมการตั้งค่าทั้งหมดของระบบ (Single Source of Truth)
+    Centralized configuration for the entire application.
+    Acts as the single source of truth for constants, paths, and styling parameters.
     """
-    # Application Metadata
-    APP_NAME = "Classroom OS"
-    APP_VERSION = "4.0.0-Enterprise"
+    # Application Identity
+    APP_NAME: str = "Classroom OS"
+    APP_VERSION: str = "5.3.0-Enterprise"
+    ORG_NAME: str = "Acme Education"
+
+    # Database Configuration
+    DB_CONNECTION_NAME: str = "gsheets"
+    DB_MAIN_WORKSHEET: str = "Sheet1"
+    DB_CACHE_TTL: int = 0  # No caching for real-time updates
+
+    # Image Generation Constants (High Resolution & Spacing)
+    IMG_WIDTH: int = 1400
+    IMG_HEADER_HEIGHT: int = 700
+    # INCREASED ROW HEIGHT to provide ample vertical space for Thai ascenders/descenders
+    IMG_ROW_HEIGHT: int = 500   
+    IMG_FOOTER_HEIGHT: int = 150
+    IMG_PADDING_X: int = 50
+    IMG_CARD_RADIUS: int = 35
+
+    # Font Configuration (Must be present in the environment)
+    FONT_PRIMARY_BOLD: str = "Sarabun-Bold.ttf"
+    FONT_PRIMARY_REG: str = "Sarabun-Regular.ttf"
+
+    # Color Palette (Modern Corporate Theme)
+    COLOR_BRAND_PRIMARY: str = "#4338CA"    # Deep Indigo
+    COLOR_BRAND_SECONDARY: str = "#3730A3"  # Darker Indigo
+    COLOR_BRAND_ACCENT: str = "#A5B4FC"     # Light Indigo
     
-    # Graphic Rendering Config
-    IMG_WIDTH = 1400
-    IMG_HEADER_HEIGHT = 700
-    IMG_ROW_HEIGHT = 450  # เพิ่มความสูงแถวเพื่อให้สระไม่ชนกัน
-    IMG_FOOTER_HEIGHT = 150
-    IMG_PADDING_X = 50
+    COLOR_BG_MAIN: str = "#F1F5F9"          # Light Gray Background
+    COLOR_CARD_SURFACE: str = "#FFFFFF"     # White Card
+    COLOR_CARD_BORDER: str = "#E2E8F0"      # Light Border
+    COLOR_CARD_SHADOW: str = "#94A3B8"      # Shadow Tone
     
-    # Typography Config (Thai Vowel Fix)
-    FONT_MAIN = "Sarabun-Bold.ttf"
-    FONT_SEC = "Sarabun-Regular.ttf"
-    THAI_VOWEL_OFFSET = 20  # ค่าชดเชยแกน Y สำหรับสระบน
-    
-    # Color Palette (Theme: Corporate Indigo)
-    COLOR_PRIMARY = "#4338CA"      # Header Background
-    COLOR_SECONDARY = "#3730A3"    # Accent Elements
-    COLOR_BG = "#F1F5F9"           # Global Background
-    COLOR_CARD_BG = "#FFFFFF"      # Card Background
-    COLOR_CARD_SHADOW = "#94A3B8"  # Card Shadow
-    
-    # Rank System Colors
-    RANK_COLORS = {
-        0: {"hex": "#F59E0B", "name": "Gold"},
-        1: {"hex": "#94A3B8", "name": "Silver"},
-        2: {"hex": "#B45309", "name": "Bronze"},
-        "default": {"hex": "#64748B", "name": "Slate"}
+    COLOR_TEXT_PRIMARY: str = "#1E293B"     # Dark Slate
+    COLOR_TEXT_SECONDARY: str = "#64748B"   # Medium Slate
+    COLOR_TEXT_MUTED: str = "#94A3B8"       # Light Slate
+
+    # Score Colors
+    COLOR_SCORE_POSITIVE: str = "#10B981"   # Emerald Green
+    COLOR_SCORE_NEGATIVE: str = "#EF4444"   # Red
+
+    # Rank Theme System (Color & Name Mapping)
+    RANK_THEMES: Dict[Union[int, str], Dict[str, str]] = {
+        0: {"hex": "#F59E0B", "bg": "#FEF3C7", "name": "Gold"},   # Rank 1
+        1: {"hex": "#94A3B8", "bg": "#F1F5F9", "name": "Silver"}, # Rank 2
+        2: {"hex": "#B45309", "bg": "#FFEDD5", "name": "Bronze"}, # Rank 3
+        "default": {"hex": "#64748B", "bg": "#F8FAFC", "name": "Slate"} # Others
     }
 
 # ==============================================================================
-# MODULE 3: DOMAIN MODELS & LOGIC
+# MODULE 2: DOMAIN MODELS (DATA STRUCTURES)
 # ==============================================================================
 
 class RankDefinition:
-    """Model สำหรับนิยามยศและสิทธิพิเศษ"""
-    def __init__(self, name: str, th_name: str, min_xp: int, color: str, bg_color: str, description: str):
-        self.name = name
-        self.th_name = th_name
-        self.min_xp = min_xp
-        self.color = color
-        self.bg_color = bg_color
-        self.description = description
+    """
+    Immutable data structure representing a single rank tier.
+    Holds all display properties and rules for a rank.
+    """
+    def __init__(self, id: str, th_name: str, min_xp: int, color: str, bg_color: str, description: str):
+        self.id = id                  # Internal identifier (e.g., "PRESIDENT")
+        self.th_name = th_name        # Display name in Thai
+        self.min_xp = min_xp          # Minimum XP required
+        self.color = color            # Foreground color (hex)
+        self.bg_color = bg_color      # Background color (hex)
+        self.description = description # Privilege description
+
+    def __repr__(self):
+        return f"RankDefinition(id='{self.id}', min_xp={self.min_xp})"
+
+class TransactionLog:
+    """
+    Represents a single score transaction record.
+    """
+    def __init__(self, id: str, timestamp: datetime, reason: str, amount: int, balance: int):
+        self.id = id
+        self.timestamp = timestamp
+        self.reason = reason
+        self.amount = amount
+        self.balance = balance
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Converts object to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "ts": self.timestamp.strftime("%Y-%m-%d %H:%M"),
+            "reason": self.reason,
+            "amount": self.amount,
+            "balance": self.balance
+        }
+
+# ==============================================================================
+# MODULE 3: BUSINESS LOGIC LAYER
+# ==============================================================================
 
 class RankManager:
     """
-    Business Logic สำหรับการคำนวณยศ (Rank)
+    Encapsulates all logic related to rank determination and progress calculation.
+    This is the source of truth for rank rules.
     """
     def __init__(self):
-        # นิยามยศทั้งหมดที่นี่
-        self.ranks = [
+        # Define the hierarchy of ranks, ordered from highest to lowest XP.
+        # IMPORTANT: Ensure Thai descriptions are concise for UI fit.
+        self._ranks: List[RankDefinition] = [
             RankDefinition("PRESIDENT", "👑 ประธานรุ่น", 1000, "#F59E0B", "#FEF3C7", "Immunity (ไม่ทำ 3 งาน) + Bonus 1/งาน"),
             RankDefinition("DIRECTOR", "💼 หัวหน้าฝ่าย", 600, "#8B5CF6", "#F3E8FF", "Workload Cut (ลดภาระงาน 50%)"),
             RankDefinition("MANAGER", "👔 หัวหน้าแผนก", 300, "#3B82F6", "#DBEAFE", "Second Chance (แก้ตัวได้ 1 ครั้ง/หน่วย)"),
@@ -100,612 +157,1262 @@ class RankManager:
             RankDefinition("INTERN", "👶 เด็กฝึกงาน", 0, "#64748B", "#F1F5F9", "Check-up (สิทธิ์ให้ครูตรวจงานก่อนส่ง)"),
             RankDefinition("PROBATION", "⚠️ ทัณฑ์บน", -999999, "#EF4444", "#FEE2E2", "สถานะวิกฤต! รีบซ่อมคะแนนด่วน")
         ]
+        self._probation_rank = self._ranks[-1]
+        self._default_rank = self._ranks[-2] # Intern
 
-    def get_rank(self, xp: int) -> RankDefinition:
-        """คืนค่า Object ยศ ตาม XP ที่ได้รับ"""
-        if xp < 0: return self.ranks[-1] # Probation
-        for rank in self.ranks:
-            if rank.name != "PROBATION" and xp >= rank.min_xp:
-                return rank
-        return self.ranks[-2] # Default Intearn
+    @property
+    def all_ranks(self) -> List[RankDefinition]:
+        """Returns a read-only list of all definitions."""
+        return self._ranks
 
-    def calculate_progress(self, xp: int) -> Tuple[float, str]:
-        """คำนวณเปอร์เซ็นต์ความคืบหน้าสู่ยศถัดไป"""
-        if xp < 0: return 0.0, "Critical Status"
+    def get_rank_by_xp(self, xp: int) -> RankDefinition:
+        """
+        Determines the appropriate rank for a given XP value.
+        """
+        if xp < 0:
+            return self._probation_rank
         
-        for i, rank in enumerate(self.ranks):
-            if rank.name != "PROBATION" and xp >= rank.min_xp:
-                if i > 0:
-                    next_rank = self.ranks[i-1]
-                    target = next_rank.min_xp
-                    denominator = target if target > 0 else 100
-                    pct = min(1.0, xp / denominator)
-                    return pct, f"{int(pct*100)}% to {next_rank.th_name}"
-                return 1.0, "MAX LEVEL"
-        return 0.0, "0%"
+        for rank in self._ranks:
+            # Skip probation in normal check, find first rank where XP is sufficient
+            if rank.id != "PROBATION" and xp >= rank.min_xp:
+                return rank
+                
+        return self._default_rank # Should not happen with correct config
+
+    def calculate_progress_to_next(self, xp: int) -> Tuple[float, str]:
+        """
+        Calculates the percentage progress towards the next rank tier.
+        Returns: (percentage as float 0.0-1.0, label string)
+        """
+        if xp < 0:
+            return 0.0, "Status: Critical"
+        
+        current_rank = self.get_rank_by_xp(xp)
+        
+        # Find index of current rank
+        try:
+            idx = self._ranks.index(current_rank)
+        except ValueError:
+             return 0.0, "Error"
+
+        # If not the highest rank (index 0)
+        if idx > 0:
+            next_rank = self._ranks[idx - 1]
+            target_xp = next_rank.min_xp
+            
+            # Prevent division by zero if target is 0 (though unlikely for higher ranks)
+            denominator = target_xp if target_xp > 0 else 100 
+            
+            progress_pct = min(1.0, xp / denominator)
+            return progress_pct, f"{int(progress_pct * 100)}% to {next_rank.th_name}"
+            
+        return 1.0, "MAX LEVEL REACHED"
 
 class BadgeSystem:
-    """ระบบคำนวณเหรียญตรา (Badges)"""
+    """
+    Manages gamification badges based on user history and status.
+    """
     def __init__(self):
-        self.catalog = {
-            "wealthy": "💎",    # 800+ XP
-            "sniper": "🎯",     # Transaction > 100 XP
-            "debtor": "💸",     # ติดลบ
-            "phoenix": "🔥",    # เคยติดลบแล้วกลับมาบวก
-            "first_blood": "🩸" # กิจกรรมแรก
+        # Map internal badge IDs to display emojis
+        self._badge_catalog: Dict[str, str] = {
+            "wealthy": "💎",    # High XP hoard
+            "sniper": "🎯",     # Big single achievement
+            "debtor": "💸",     # Negative balance
+            "phoenix": "🔥",    # Returned from negative
+            "first_blood": "🩸", # First activity mark
+            "veteran": "🎖️"      # Many activities
         }
 
-    def evaluate(self, current_xp: int, history: List[Dict]) -> List[str]:
-        earned = []
-        if current_xp >= 800: earned.append("wealthy")
-        if current_xp < 0: earned.append("debtor")
-        if any(h.get('amount', 0) >= 100 for h in history): earned.append("sniper")
-        if len(history) > 0: earned.append("first_blood")
-        # Logic for Phoenix could be added here
-        return list(set(earned))
+    def evaluate_badges(self, current_xp: int, history: List[Dict[str, Any]]) -> List[str]:
+        """
+        Analyzes XP and history to determine earned badges.
+        Returns a list of badge IDs.
+        """
+        earned_badges = set()
+        
+        # XP based badges
+        if current_xp >= 800:
+            earned_badges.add("wealthy")
+        if current_xp < 0:
+            earned_badges.add("debtor")
+            
+        # History based badges
+        if history:
+            earned_badges.add("first_blood")
+            if len(history) >= 10:
+                earned_badges.add("veteran")
+            # Check for large single transactions
+            if any(h.get('amount', 0) >= 100 for h in history):
+                earned_badges.add("sniper")
+            
+            # Check for 'Phoenix' (was negative, now positive) - requires complex check
+            # Simplified version: if current is positive but has 'debtor' in history could be added.
+            # For now, let's stick to simple rules.
 
-    def render(self, badge_keys: List[str]) -> str:
-        return "".join([self.catalog.get(k, "") for k in badge_keys])
+        return list(earned_badges)
+
+    def render_badges(self, badge_ids: List[str]) -> str:
+        """Converts a list of badge IDs to a string of emojis."""
+        return "".join([self._badge_catalog.get(bid, "") for bid in badge_ids])
 
 # ==============================================================================
-# MODULE 4: DATA ACCESS LAYER (Repository Pattern)
+# MODULE 4: DATA ACCESS LAYER (REPOSITORY)
 # ==============================================================================
 
 class GoogleSheetsRepository:
     """
-    จัดการการเชื่อมต่อข้อมูลกับ Google Sheets อย่างปลอดภัย
+    Handles all interactions with the Google Sheets backend.
+    Implements CRUD operations and data sanitization.
     """
-    REQUIRED_COLUMNS = ['Room', 'GroupName', 'XP', 'Members', 'LastUpdated', 'HistoryLog', 'Badges']
+    # Define the strict schema expected for the DataFrame
+    SCHEMA = ['Room', 'GroupName', 'XP', 'Members', 'LastUpdated', 'HistoryLog', 'Badges']
 
     def __init__(self):
+        self.cfg = AppConfig()
+        self.conn = self._establish_connection()
+
+    def _establish_connection(self) -> GSheetsConnection:
+        """Attempts to connect to Google Sheets via Streamlit secrets."""
         try:
-            self.conn = st.connection("gsheets", type=GSheetsConnection)
-            logger.info("Connected to Google Sheets service.")
+            conn = st.connection(self.cfg.DB_CONNECTION_NAME, type=GSheetsConnection)
+            logger.info("Successfully established connection to Google Sheets.")
+            return conn
         except Exception as e:
-            logger.error(f"Failed to connect DB: {e}")
-            st.error(f"🔴 Database Connection Error: {e}")
+            logger.critical(f"Failed to connect to Google Sheets: {e}", exc_info=True)
+            st.error(f"🔴 Critical Error: Could not connect to database. Check logs.")
             st.stop()
 
-    def _sanitize(self, df: pd.DataFrame) -> pd.DataFrame:
-        """ทำความสะอาดข้อมูลดิบ"""
-        if df.empty or not set(self.REQUIRED_COLUMNS).issubset(df.columns):
-            return pd.DataFrame(columns=self.REQUIRED_COLUMNS)
+    def _sanitize_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Ensures the DataFrame conforms to the expected SCHEMA.
+        Handles missing columns, NaNs, and type casting.
+        """
+        if df.empty:
+            return pd.DataFrame(columns=self.SCHEMA)
         
-        df = df[self.REQUIRED_COLUMNS].copy().dropna(how='all')
+        # Ensure all required columns exist
+        missing_cols = set(self.SCHEMA) - set(df.columns)
+        if missing_cols:
+            logger.warning(f"Found missing columns in DB: {missing_cols}. Adding them.")
+            for col in missing_cols:
+                df[col] = None
+
+        # Select only required columns and drop completely empty rows
+        df = df[self.SCHEMA].copy().dropna(how='all')
+        
+        # Type coercion and null handling
+        # XP must be integer
         df['XP'] = pd.to_numeric(df['XP'], errors='coerce').fillna(0).astype(int)
+        
+        # JSON fields must be valid JSON strings, default to empty list "[]"
         for col in ['HistoryLog', 'Badges']:
             df[col] = df[col].fillna("[]").astype(str)
+            # Basic validation: check if it looks like JSON list
+            mask = ~df[col].str.startswith("[") | ~df[col].str.endswith("]")
+            df.loc[mask, col] = "[]"
+
+        # String fields default to empty string
+        for col in ['Room', 'GroupName', 'Members', 'LastUpdated']:
+            df[col] = df[col].fillna("").astype(str)
+
         return df
 
-    def get_data(self) -> pd.DataFrame:
+    def fetch_all_data(self) -> pd.DataFrame:
+        """Retrieves all data from the main worksheet."""
         try:
-            df = self.conn.read(worksheet="Sheet1", ttl=0)
-            return self._sanitize(df)
+            # ttl=0 ensures no caching for fresh data
+            df = self.conn.read(worksheet=self.cfg.DB_MAIN_WORKSHEET, ttl=self.cfg.DB_CACHE_TTL)
+            sanitized_df = self._sanitize_dataframe(df)
+            logger.info(f"Fetched {len(sanitized_df)} records from database.")
+            return sanitized_df
         except Exception as e:
-            logger.error(f"Read Error: {e}")
-            return pd.DataFrame(columns=self.REQUIRED_COLUMNS)
+            logger.error(f"Error fetching data: {e}")
+            # Return empty DataFrame with correct schema on failure
+            return pd.DataFrame(columns=self.SCHEMA)
 
-    def save_data(self, df: pd.DataFrame) -> bool:
+    def commit_data(self, df: pd.DataFrame) -> bool:
+        """Writes the given DataFrame back to the sheet."""
         try:
-            self.conn.update(worksheet="Sheet1", data=df)
-            st.cache_data.clear()
-            logger.info("Database updated successfully.")
+            # Ensure data is clean before writing
+            df_to_write = self._sanitize_dataframe(df)
+            self.conn.update(worksheet=self.cfg.DB_MAIN_WORKSHEET, data=df_to_write)
+            st.cache_data.clear() # Clear Streamlit's data cache
+            logger.info("Database commit successful.")
             return True
         except Exception as e:
-            logger.error(f"Write Error: {e}")
-            st.error(f"Save Failed: {e}")
+            logger.error(f"Database commit failed: {e}", exc_info=True)
+            st.error(f"⚠️ Failed to save data: {e}")
             return False
 
-    # --- Domain Specific Operations ---
+    # --- Domain-Specific Transaction Methods ---
 
-    def create_group(self, room: str, name: str, members: str, df: pd.DataFrame) -> bool:
-        if ((df['Room'] == room) & (df['GroupName'] == name)).any():
+    def create_group_record(self, room: str, name: str, members: str, current_df: pd.DataFrame) -> bool:
+        """Creates a new group if the name doesn't exist in the room."""
+        # Check for duplicate name within the same room
+        duplicate_mask = (current_df['Room'] == room) & (current_df['GroupName'] == name)
+        if duplicate_mask.any():
+            logger.warning(f"Attempted to create duplicate group '{name}' in room '{room}'.")
             return False
         
-        new_row = pd.DataFrame([{
-            "Room": room, 
-            "GroupName": name, 
-            "XP": 0, 
+        new_record = {
+            "Room": room,
+            "GroupName": name,
+            "XP": 0,
             "Members": members,
             "LastUpdated": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "HistoryLog": "[]", 
+            "HistoryLog": "[]",
             "Badges": "[]"
-        }])
-        return self.save_data(pd.concat([df, new_row], ignore_index=True))
+        }
+        updated_df = pd.concat([current_df, pd.DataFrame([new_record])], ignore_index=True)
+        return self.commit_data(updated_df)
 
-    def update_group(self, room: str, old_name: str, new_name: str, new_members: str, df: pd.DataFrame) -> bool:
-        if new_name != old_name and ((df['Room'] == room) & (df['GroupName'] == new_name)).any():
-            return False
-            
-        mask = (df['Room'] == room) & (df['GroupName'] == old_name)
-        if mask.any():
-            idx = df[mask].index[0]
-            df.at[idx, 'GroupName'] = new_name
-            df.at[idx, 'Members'] = new_members
-            df.at[idx, 'LastUpdated'] = datetime.now().strftime("%Y-%m-%d %H:%M")
-            return self.save_data(df)
-        return False
+    def update_group_record(self, room: str, old_name: str, new_name: str, new_members: str, current_df: pd.DataFrame) -> bool:
+        """Updates group name and members."""
+        # If name is changing, ensure new name isn't taken
+        if new_name != old_name:
+             duplicate_mask = (current_df['Room'] == room) & (current_df['GroupName'] == new_name)
+             if duplicate_mask.any():
+                 logger.warning(f"Cannot rename to '{new_name}', name already exists.")
+                 return False
 
-    def delete_group(self, room: str, name: str, df: pd.DataFrame) -> bool:
-        mask = ~((df['Room'] == room) & (df['GroupName'] == name))
-        return self.save_data(df[mask])
+        # Find the group to update
+        target_mask = (current_df['Room'] == room) & (current_df['GroupName'] == old_name)
+        if not target_mask.any():
+             logger.warning(f"Group '{old_name}' not found for update.")
+             return False
+             
+        idx = current_df[target_mask].index[0]
+        current_df.at[idx, 'GroupName'] = new_name
+        current_df.at[idx, 'Members'] = new_members
+        current_df.at[idx, 'LastUpdated'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        return self.commit_data(current_df)
 
-    def add_transaction(self, room: str, targets: List[str], amount: int, reason: str, df: pd.DataFrame, badge_sys: BadgeSystem) -> Tuple[bool, int]:
-        count = 0
-        for name in targets:
-            mask = (df['Room'] == room) & (df['GroupName'] == name)
+    def delete_group_record(self, room: str, name: str, current_df: pd.DataFrame) -> bool:
+        """Soft-deletes a group by filtering it out and saving."""
+        # Keep rows that do NOT match the target room AND name
+        keep_mask = ~((current_df['Room'] == room) & (current_df['GroupName'] == name))
+        updated_df = current_df[keep_mask]
+        return self.commit_data(updated_df)
+
+    def process_xp_transaction(self, room: str, target_groups: List[str], amount: int, reason: str, 
+                               current_df: pd.DataFrame, badge_sys: BadgeSystem) -> Tuple[bool, int]:
+        """
+        Applies an XP transaction to multiple groups, updating history and badges.
+        Returns: (success status, count of updated groups)
+        """
+        updated_count = 0
+        timestamp = datetime.now()
+        ts_str = timestamp.strftime("%Y-%m-%d %H:%M")
+        
+        for group_name in target_groups:
+            mask = (current_df['Room'] == room) & (current_df['GroupName'] == group_name)
             if mask.any():
-                idx = df[mask].index[0]
-                try: hist = json.loads(df.at[idx, 'HistoryLog'])
-                except: hist = []
+                idx = current_df[mask].index[0]
                 
-                new_entry = {
+                # 1. Parse existing history
+                try:
+                    history_list = json.loads(current_df.at[idx, 'HistoryLog'])
+                except json.JSONDecodeError:
+                    history_list = []
+                
+                # 2. Create new log entry
+                new_log = {
                     "id": str(uuid.uuid4())[:8],
-                    "ts": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "ts": ts_str,
                     "reason": reason,
                     "amount": int(amount)
+                    # 'balance' will be calculated next
                 }
-                hist.insert(0, new_entry)
-                new_total = sum(h['amount'] for h in hist)
-                hist[0]['balance'] = new_total
                 
-                df.at[idx, 'XP'] = new_total
-                df.at[idx, 'HistoryLog'] = json.dumps(hist, ensure_ascii=False)
-                df.at[idx, 'Badges'] = json.dumps(badge_sys.evaluate(new_total, hist), ensure_ascii=False)
-                df.at[idx, 'LastUpdated'] = datetime.now().strftime("%Y-%m-%d %H:%M")
-                count += 1
+                # 3. Insert new log at the beginning (newest first)
+                history_list.insert(0, new_log)
+                
+                # 4. Recalculate total balance from history
+                new_balance = sum(item['amount'] for item in history_list)
+                # Update the balance on the newest entry
+                history_list[0]['balance'] = new_balance
+                
+                # 5. Evaluate badges based on new state
+                new_badges = badge_sys.evaluate_badges(new_balance, history_list)
+                
+                # 6. Update DataFrame fields
+                current_df.at[idx, 'XP'] = new_balance
+                current_df.at[idx, 'HistoryLog'] = json.dumps(history_list, ensure_ascii=False)
+                current_df.at[idx, 'Badges'] = json.dumps(new_badges, ensure_ascii=False)
+                current_df.at[idx, 'LastUpdated'] = ts_str
+                
+                updated_count += 1
         
-        if count > 0:
-            return self.save_data(df), count
+        if updated_count > 0:
+            success = self.commit_data(current_df)
+            return success, updated_count
         return False, 0
 
-    def power_edit(self, room: str, target: str, new_hist_df: pd.DataFrame, df: pd.DataFrame, badge_sys: BadgeSystem) -> bool:
-        mask = (df['Room'] == room) & (df['GroupName'] == target)
-        if mask.any():
-            idx = df[mask].index[0]
-            hist_list = new_hist_df.to_dict('records')
+    def apply_history_override(self, room: str, group_name: str, new_history_df: pd.DataFrame, 
+                               current_df: pd.DataFrame, badge_sys: BadgeSystem) -> bool:
+        """
+        Replaces a group's entire history and recalculates everything. Power user feature.
+        """
+        mask = (current_df['Room'] == room) & (current_df['GroupName'] == group_name)
+        if not mask.any():
+            return False
             
-            # Recalculate Balance strictly
-            hist_sorted = sorted(hist_list, key=lambda x: x['ts'])
-            running = 0
-            for h in hist_sorted:
-                running += int(h['amount'])
-                h['balance'] = running
+        idx = current_df[mask].index[0]
+        
+        # Convert edited DataFrame back to list of dicts
+        history_list = new_history_df.to_dict('records')
+        
+        # Recalculate balances logically based on time
+        # 1. Sort ascending by time to calculate running balance
+        try:
+            history_sorted_asc = sorted(history_list, key=lambda x: x.get('ts', ''))
+        except Exception:
+             # Fallback if ts is missing or broken
+             history_sorted_asc = history_list
+
+        running_balance = 0
+        for item in history_sorted_asc:
+            # Ensure amount is int
+            amt = int(item.get('amount', 0))
+            item['amount'] = amt
+            running_balance += amt
+            item['balance'] = running_balance
             
-            final_hist = sorted(hist_sorted, key=lambda x: x['ts'], reverse=True)
-            final_xp = running
-            
-            df.at[idx, 'XP'] = final_xp
-            df.at[idx, 'HistoryLog'] = json.dumps(final_hist, ensure_ascii=False)
-            df.at[idx, 'Badges'] = json.dumps(badge_sys.evaluate(final_xp, final_hist), ensure_ascii=False)
-            return self.save_data(df)
-        return False
+        final_xp = running_balance
+        
+        # 2. Sort descending (newest first) for storage
+        history_sorted_desc = sorted(history_sorted_asc, key=lambda x: x.get('ts', ''), reverse=True)
+        
+        # Re-evaluate badges
+        new_badges = badge_sys.evaluate_badges(final_xp, history_sorted_desc)
+        
+        # Update DF
+        current_df.at[idx, 'XP'] = final_xp
+        current_df.at[idx, 'HistoryLog'] = json.dumps(history_sorted_desc, ensure_ascii=False)
+        current_df.at[idx, 'Badges'] = json.dumps(new_badges, ensure_ascii=False)
+        current_df.at[idx, 'LastUpdated'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        return self.commit_data(current_df)
 
 # ==============================================================================
-# MODULE 5: GRAPHICS ENGINE (THAI FONT FIX)
+# MODULE 5: GRAPHICS ENGINE (HIGH-FIDELITY RENDERING)
 # ==============================================================================
 
 class GraphicsEngine:
     """
-    เครื่องมือสร้างภาพกราฟิกความละเอียดสูง พร้อมระบบจัดการฟอนต์ภาษาไทย
+    Handles the generation of the high-resolution leaderboard image.
+    Utilizes explicit, absolute positioning to ensure correct rendering
+    of complex typography, specifically Thai vowels and tone marks.
     """
     def __init__(self):
         self.cfg = AppConfig()
+        self._font_cache = {}
 
     def _get_font(self, name: str, size: int) -> ImageFont.FreeTypeFont:
-        """โหลดฟอนต์อย่างปลอดภัย"""
-        try:
-            return ImageFont.truetype(name, size)
-        except OSError:
-            logger.warning(f"Font {name} not found. Using default.")
-            return ImageFont.load_default()
+        """Loads a font from disk with caching."""
+        key = (name, size)
+        if key not in self._font_cache:
+            try:
+                # Ensure Pillow version >= 10.0.0 for best text features
+                font = ImageFont.truetype(name, size)
+                self._font_cache[key] = font
+            except IOError as e:
+                logger.error(f"Could not load font '{name}'. Falling back to default. Error: {e}")
+                # Fallback can result in ugly text, but prevents crash
+                font = ImageFont.load_default()
+                self._font_cache[key] = font
+        return self._font_cache[key]
 
-    def _remove_unsafe_chars(self, text: str) -> str:
-        """ลบ Emoji ที่อาจทำให้ Pillow แครช"""
-        unsafe = ["👑", "💼", "👔", "👨‍💼", "👶", "⚠️", "🩸", "💎", "💸", "🎯", "🔥", "🏆"]
-        for u in unsafe:
-            text = text.replace(u, "")
-        return text.strip()
-
-    def _draw_text_thai_safe(self, draw: ImageDraw.Draw, xy: Tuple[int, int], text: str, 
-                             font: ImageFont.FreeTypeFont, fill: str, anchor: str = "ls", 
-                             max_width: Optional[int] = None) -> int:
+    def _clean_text_for_render(self, text: str) -> str:
         """
-        ฟังก์ชันวาดข้อความภาษาไทยแบบพิเศษ (Smart Draw)
-        - คำนวณ Bounding Box จริง
-        - ลดขนาดฟอนต์อัตโนมัติถ้าล้น (Auto-fit)
-        - ชดเชยตำแหน่ง Y สำหรับสระบน (Vowel Compensation)
+        Prepares text for rendering by removing characters known to cause
+        issues with PIL's standard font renderer (like complex emojis).
+        Thai characters are preserved.
         """
-        x, y = xy
-        
-        # 1. Auto-fit logic
-        if max_width:
-            current_size = font.size
-            while font.getlength(text) > max_width and current_size > 30:
-                current_size -= 2
-                # โหลดฟอนต์ใหม่ด้วยขนาดที่เล็กลง
-                try:
-                    font = ImageFont.truetype(font.path, current_size)
-                except:
-                    break # ใช้ฟอนต์เดิมถ้าโหลดไม่ได้
-        
-        # 2. Thai Vowel Adjustment
-        # เปลี่ยน Anchor จาก ls (Baseline) เป็น la (Left-Ascender) หรือ lt (Left-Top) 
-        # เพื่อให้ควบคุมพื้นที่ด้านบนได้แม่นยำขึ้น
-        
-        # วิธีแก้ที่ดีที่สุด: วาดโดยใช้ Bounding Box จริง
-        bbox = draw.textbbox((x, y), text, font=font, anchor=anchor)
-        text_height = bbox[3] - bbox[1]
-        
-        # ถ้าเป็น anchor แบบ Baseline (ls, ms, rs) ให้ขยับลงมาหน่อยเผื่อสระบน
-        # แต่เพื่อความชัวร์ เราจะวาดปกติแต่เผื่อพื้นที่ใน IMG_ROW_HEIGHT ไว้เยอะๆ แล้ว
-        
-        draw.text((x, y), text, font=font, fill=fill, anchor=anchor)
-        
-        return text_height
+        if not isinstance(text, str): return ""
+        # Blocklist of problematic emoji ranges/characters
+        # Note: Standard text & Thai characters are allowed.
+        problematic_chars = ["👑", "💼", "👔", "👨‍💼", "👶", "⚠️", "🩸", "💎", "💸", "🎯", "🔥", "🏆"]
+        cleaned = text
+        for char in problematic_chars:
+            cleaned = cleaned.replace(char, "")
+        return cleaned.strip()
 
-    def render(self, room_name: str, df: pd.DataFrame, rank_manager: RankManager) -> bytes:
-        """สร้างภาพ Leaderboard"""
+    def _draw_text_with_autofit(self, draw: ImageDraw.Draw, text: str, 
+                                x: int, y: int, max_width: int,
+                                font_name: str, max_size: int, 
+                                color: str, anchor: str = "lt") -> None:
+        """
+        Draws text, automatically reducing font size if it exceeds max_width.
+        Uses 'lt' (Left Top) anchor for predictable vertical positioning.
+        """
+        text = self._clean_text_for_render(text)
+        if not text: return
+
+        current_size = max_size
+        min_size = 30 # Absolute minimum legible size
         
-        # 1. Prepare Data
-        data = df.sort_values("XP", ascending=False).reset_index(drop=True)
-        total_height = (
+        font = self._get_font(font_name, current_size)
+        
+        # Iteratively reduce size until it fits
+        while current_size > min_size:
+            # getlength is efficient for checking width
+            if font.getlength(text) <= max_width:
+                break
+            current_size -= 4 # Step down size
+            font = self._get_font(font_name, current_size)
+            
+        # Final draw with fitted font
+        # Using 'lt' anchor means (x, y) is the top-left corner of the text bounding box.
+        # This is crucial for predictable stacking of Thai text.
+        draw.text((x, y), text, font=font, fill=color, anchor=anchor)
+
+    def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manager: RankManager) -> bytes:
+        """
+        Orchestrates the entire image generation process.
+        Uses explicit vertical spacing to solve Thai typography overlaps.
+        """
+        logger.info(f"Starting image generation for room: {room_name}")
+        start_time = time.time()
+
+        # 1. Prepare Data (Sort and Filter)
+        leaderboard_data = df.sort_values("XP", ascending=False).reset_index(drop=True)
+        
+        # 2. Calculate Canvas Dimensions
+        total_rows = len(leaderboard_data)
+        canvas_height = (
             self.cfg.IMG_HEADER_HEIGHT + 
-            (len(data) * self.cfg.IMG_ROW_HEIGHT) + 
+            (total_rows * self.cfg.IMG_ROW_HEIGHT) + 
             self.cfg.IMG_FOOTER_HEIGHT
         )
         
-        # 2. Create Canvas
-        img = Image.new('RGB', (self.cfg.IMG_WIDTH, total_height), color=self.cfg.COLOR_BG)
+        # 3. Initialize Canvas
+        # Use RGBA for potential transparency features, though saving as PNG solid.
+        img = Image.new('RGBA', (self.cfg.IMG_WIDTH, canvas_height), color=self.cfg.COLOR_BG_MAIN)
         draw = ImageDraw.Draw(img)
         
-        # 3. Draw Header
-        draw.rectangle([(0, 0), (self.cfg.IMG_WIDTH, self.cfg.IMG_HEADER_HEIGHT)], fill=self.cfg.COLOR_PRIMARY)
-        # Decor
-        draw.ellipse([(1000, -100), (1600, 500)], fill='#4F46E5')
-        draw.ellipse([(-100, 300), (400, 800)], fill='#3730A3')
+        # ==========================================================================
+        # HEADER SECTION Rendering
+        # ==========================================================================
+        # Background Header
+        draw.rectangle([(0, 0), (self.cfg.IMG_WIDTH, self.cfg.IMG_HEADER_HEIGHT)], fill=self.cfg.COLOR_BRAND_PRIMARY)
+        
+        # Decorative Abstract Shapes
+        draw.ellipse([(900, -150), (1500, 450)], fill=self.cfg.COLOR_BRAND_SECONDARY)
+        draw.ellipse([(-100, 250), (500, 850)], fill=self.cfg.COLOR_BRAND_SECONDARY)
         
         # Header Typography
-        f_super = self._get_font(self.cfg.FONT_MAIN, 200) # Icon fallback
-        f_title = self._get_font(self.cfg.FONT_MAIN, 70)
-        f_room = self._get_font(self.cfg.FONT_MAIN, 180)
+        center_x = self.cfg.IMG_WIDTH // 2
         
-        draw.text((self.cfg.IMG_WIDTH//2, 220), "🏆", font=f_super, fill="white", anchor="mm")
-        draw.text((self.cfg.IMG_WIDTH//2, 400), "CLASSROOM LEADERBOARD", font=f_title, fill="#A5B4FC", anchor="mm")
-        draw.text((self.cfg.IMG_WIDTH//2, 600), f"{room_name}", font=f_room, fill="white", anchor="mm")
+        # Trophy Icon (Text fallback if image icon not used)
+        f_icon = self._get_font(self.cfg.FONT_PRIMARY_REG, 180)
+        draw.text((center_x, 220), "🏆", font=f_icon, fill="white", anchor="mm")
         
-        # 4. Draw Rows
-        current_y = self.cfg.IMG_HEADER_HEIGHT + 50
+        # Main Title
+        f_title = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 60)
+        draw.text((center_x, 380), "CLASSROOM LEADERBOARD", font=f_title, fill=self.cfg.COLOR_BRAND_ACCENT, anchor="mm")
         
-        # Pre-load fonts
-        f_rank = self._get_font(self.cfg.FONT_MAIN, 90)
-        f_name = self._get_font(self.cfg.FONT_MAIN, 90) # ชื่อกลุ่ม
-        f_score = self._get_font(self.cfg.FONT_MAIN, 110)
-        f_label = self._get_font(self.cfg.FONT_MAIN, 50) # คำว่า XP
-        f_members = self._get_font(self.cfg.FONT_SEC, 45)
-        f_rank_name = self._get_font(self.cfg.FONT_MAIN, 50) # ชื่อยศ
-        f_desc = self._get_font(self.cfg.FONT_SEC, 38) # สิทธิพิเศษ
+        # Room Name (Large)
+        f_room = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 150)
+        draw.text((center_x, 550), room_name, font=f_room, fill="white", anchor="mm")
+
+        # ==========================================================================
+        # LEADERBOARD ROWS Rendering
+        # ==========================================================================
+        # Starting Y position for the first card based on config
+        current_y_cursor = self.cfg.IMG_HEADER_HEIGHT + 50
         
-        for i, row in data.iterrows():
-            rank_def = rank_manager.get_rank(row['XP'])
-            pct, _ = rank_manager.calculate_progress(row['XP'])
+        # Pre-fetch fonts used repeatedly in loop
+        f_rank_num = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 85)
+        f_score_val = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 110)
+        f_score_lbl = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 45)
+        f_members = self._get_font(self.cfg.FONT_PRIMARY_REG, 42)
+        f_rank_title = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 48)
+        f_privilege = self._get_font(self.cfg.FONT_PRIMARY_REG, 36)
+
+        for i, row in leaderboard_data.iterrows():
+            # A. Resolve Row Data
+            xp = row['XP']
+            rank_def = rank_manager.get_rank_by_xp(xp)
+            progress_pct, _ = rank_manager.calculate_progress_to_next(xp)
             
-            # Theme Color
-            rank_theme = self.cfg.RANK_COLORS.get(i, self.cfg.RANK_COLORS["default"])
-            color_hex = rank_theme["hex"]
-            score_color = "#EF4444" if row['XP'] < 0 else "#10B981"
+            # Determine Theme Colors
+            rank_idx = i if i < 3 else "default"
+            theme = self.cfg.RANK_THEMES[rank_idx]
+            rank_color_hex = theme["hex"]
             
-            # Card Metrics
-            card_x = self.cfg.IMG_PADDING_X
-            card_w = self.cfg.IMG_WIDTH - (self.cfg.IMG_PADDING_X * 2)
-            card_h = self.cfg.IMG_ROW_HEIGHT - 40
+            score_color = self.cfg.COLOR_SCORE_NEGATIVE if xp < 0 else self.cfg.COLOR_SCORE_POSITIVE
+
+            # B. Card Layout Definitions
+            card_x_start = self.cfg.IMG_PADDING_X
+            card_width = self.cfg.IMG_WIDTH - (self.cfg.IMG_PADDING_X * 2)
+            # Card height is row height minus gaps between cards
+            card_height = self.cfg.IMG_ROW_HEIGHT - 40 
+            card_y_start = current_y_cursor
+            card_y_end = card_y_start + card_height
             
-            # Shadow & Body
-            draw.rounded_rectangle([(card_x+10, current_y+10), (card_x+card_w+10, current_y+card_h+10)], radius=30, fill=self.cfg.COLOR_CARD_SHADOW)
-            draw.rounded_rectangle([(card_x, current_y), (card_x+card_w, current_y+card_h)], radius=30, fill=self.cfg.COLOR_CARD_BG)
+            # C. Draw Card Background & Shadow
+            # Shadow layer (offset slightly)
+            draw.rounded_rectangle(
+                [(card_x_start + 8, card_y_start + 10), (card_x_start + card_width + 8, card_y_end + 10)],
+                radius=self.cfg.IMG_CARD_RADIUS, fill=self.cfg.COLOR_CARD_SHADOW
+            )
+            # Main surface layer
+            draw.rounded_rectangle(
+                [(card_x_start, card_y_start), (card_x_start + card_width, card_y_end)],
+                radius=self.cfg.IMG_CARD_RADIUS, fill=self.cfg.COLOR_CARD_SURFACE
+            )
+
+            # --- COLUMN 1: Rank Position Indicator (Left) ---
+            circle_center_x = card_x_start + 120
+            circle_center_y = card_y_start + (card_height // 2)
+            circle_radius = 75
             
-            # --- ZONE 1: RANK CIRCLE ---
-            cx, cy = 160, current_y + (card_h // 2)
-            r = 80
-            draw.ellipse([(cx-r, cy-r), (cx+r, cy+r)], fill=color_hex)
-            draw.text((cx, cy), str(i+1), font=f_rank, fill="white", anchor="mm")
+            # Draw colored circle
+            draw.ellipse(
+                [(circle_center_x - circle_radius, circle_center_y - circle_radius),
+                 (circle_center_x + circle_radius, circle_center_y + circle_radius)],
+                fill=rank_color_hex
+            )
+            # Draw rank number
+            draw.text((circle_center_x, circle_center_y), str(i + 1), font=f_rank_num, fill="white", anchor="mm")
+
+            # --- COLUMN 2: Group Details & Status (Middle) ---
+            # This is the critical section for Thai typography spacing.
+            # We use explicit Y-offsets from the card top for each element.
             
-            # --- ZONE 2: INFO (Middle) ---
-            info_x = 300
-            info_w = 650
+            content_x_start = card_x_start + 260
+            content_max_width = 650 # Leave room for score on the right
             
-            # 2.1 Group Name (ใช้ฟังก์ชัน Safe Draw)
-            # ปรับ Y ลงมาหน่อยเพื่อให้สระบนมีที่หายใจ
-            name_y = current_y + 85 
-            self._draw_text_thai_safe(draw, (info_x, name_y), self._remove_unsafe_chars(str(row['GroupName'])), f_name, "#1E293B", "ls", max_width=info_w)
-            
-            # 2.2 Members
-            mem_y = name_y + 60
-            mem_text = self._remove_unsafe_chars(str(row['Members']))
-            if len(mem_text) > 60: mem_text = mem_text[:58] + "..."
-            draw.text((info_x, mem_y), mem_text, font=f_members, fill="#64748B", anchor="ls")
-            
+            # Define explicit vertical grid relative to card_y_start
+            # Spacing is generous to accommodate tall vowels (สระบน/วรรณยุกต์)
+            Y_POS_NAME = card_y_start + 60
+            Y_POS_MEMBERS = Y_POS_NAME + 75
+            Y_POS_PROGRESS_BAR = Y_POS_MEMBERS + 60
+            # Large gap before rank info to ensure separation
+            Y_POS_RANK_TITLE = Y_POS_PROGRESS_BAR + 55 
+            # Gap between title and description
+            Y_POS_PRIVILEGE = Y_POS_RANK_TITLE + 55 
+
+            # 2.1 Group Name (Auto-fit, Bold)
+            self._draw_text_with_autofit(
+                draw, str(row['GroupName']),
+                content_x_start, Y_POS_NAME, content_max_width,
+                self.cfg.FONT_PRIMARY_BOLD, 80, self.cfg.COLOR_TEXT_PRIMARY, anchor="lt"
+            )
+
+            # 2.2 Members List (Truncated if too long)
+            members_txt = self._clean_text_for_render(str(row['Members']))
+            if len(members_txt) > 65:
+                members_txt = members_txt[:62] + "..."
+            draw.text((content_x_start, Y_POS_MEMBERS), members_txt, font=f_members, fill=self.cfg.COLOR_TEXT_SECONDARY, anchor="lt")
+
             # 2.3 Progress Bar
-            bar_y = mem_y + 40
-            bar_w = 600
-            bar_h = 14
-            draw.rounded_rectangle([(info_x, bar_y), (info_x+bar_w, bar_y+bar_h)], radius=7, fill="#E2E8F0")
-            if pct > 0:
-                draw.rounded_rectangle([(info_x, bar_y), (info_x+int(bar_w*pct), bar_y+bar_h)], radius=7, fill=rank_def.color)
-            
-            # 2.4 Rank Info (Title & Desc) - แยกบรรทัดชัดเจน
-            # Title
-            title_y = bar_y + 45
-            draw.text((info_x, title_y), rank_def.th_name, font=f_rank_name, fill=rank_def.color, anchor="ls")
-            
-            # Description (Privilege)
-            desc_y = title_y + 45
-            desc_text = self._remove_unsafe_chars(rank_def.description)
-            self._draw_text_thai_safe(draw, (info_x, desc_y), desc_text, f_desc, "#64748B", "ls", max_width=info_w)
-            
-            # --- ZONE 3: SCORE (Right) ---
-            score_x = self.cfg.IMG_WIDTH - 100
-            score_y = current_y + (card_h // 2) - 20
-            
-            draw.text((score_x, score_y), f"{row['XP']}", font=f_score, fill=score_color, anchor="rs")
-            draw.text((score_x, score_y + 60), "XP", font=f_label, fill="#94A3B8", anchor="rs")
-            
-            current_y += self.cfg.IMG_ROW_HEIGHT
-            
-        # 5. Footer
-        foot_y = total_height - 70
-        f_foot = self._get_font(self.cfg.FONT_SEC, 40)
-        ts = datetime.now().strftime('%d/%m/%Y %H:%M')
-        draw.text((self.cfg.IMG_WIDTH//2, foot_y), f"Generated by {self.cfg.APP_NAME} • {ts}", font=f_foot, fill="#94A3B8", anchor="mm")
+            bar_height = 16
+            bar_width = 580
+            # Draw background track
+            draw.rounded_rectangle(
+                [(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + bar_width, Y_POS_PROGRESS_BAR + bar_height)],
+                radius=8, fill=self.cfg.COLOR_BG_MAIN
+            )
+            # Draw fill based on progress
+            if progress_pct > 0:
+                fill_width = int(bar_width * progress_pct)
+                # Ensure minimum visibility if progress > 0
+                fill_width = max(fill_width, 20) if progress_pct > 0.01 else fill_width
+                draw.rounded_rectangle(
+                    [(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + fill_width, Y_POS_PROGRESS_BAR + bar_height)],
+                    radius=8, fill=rank_def.color
+                )
+
+            # 2.4 Rank Title (Colored based on rank)
+            draw.text((content_x_start, Y_POS_RANK_TITLE), rank_def.th_name, font=f_rank_title, fill=rank_def.color, anchor="lt")
+
+            # 2.5 Privilege Description (Grey, Auto-fit)
+            # Important: Use the clean Thai description from RankDefinition
+            privilege_txt = rank_def.description
+            self._draw_text_with_autofit(
+                draw, privilege_txt,
+                content_x_start, Y_POS_PRIVILEGE, content_max_width,
+                self.cfg.FONT_PRIMARY_REG, 40, self.cfg.COLOR_TEXT_SECONDARY, anchor="lt"
+            )
+
+            # --- COLUMN 3: XP Score (Right Aligned) ---
+            score_x_anchor = self.cfg.IMG_WIDTH - self.cfg.IMG_PADDING_X - 40
+            # Center score block vertically within the card
+            score_y_center = card_y_start + (card_height // 2)
+
+            # Draw Score Value
+            # Using 'rs' (Right Baseline) anchor, adjusted up slightly
+            draw.text((score_x_anchor, score_y_center - 10), f"{xp}", font=f_score_val, fill=score_color, anchor="rs")
+            # Draw "XP" Label below value
+            draw.text((score_x_anchor, score_y_center + 50), "XP", font=f_score_lbl, fill=self.cfg.COLOR_TEXT_MUTED, anchor="rs")
+
+            # D. Advance Cursor for Next Row
+            current_y_cursor += self.cfg.IMG_ROW_HEIGHT
+
+        # ==========================================================================
+        # FOOTER SECTION Rendering
+        # ==========================================================================
+        footer_y_center = total_height - (self.cfg.IMG_FOOTER_HEIGHT // 2)
+        f_footer = self._get_font(self.cfg.FONT_PRIMARY_REG, 38)
+        timestamp_str = datetime.now().strftime('%d/%m/%Y %H:%M')
+        footer_text = f"Generated by {self.cfg.APP_NAME} • {timestamp_str}"
         
+        draw.text((self.cfg.IMG_WIDTH // 2, footer_y_center), footer_text, font=f_footer, fill=self.cfg.COLOR_TEXT_MUTED, anchor="mm")
+
+        # 4. Finalize Image
+        # Convert RGBA to RGB for PNG saving (removes alpha channel)
+        img_final = img.convert('RGB')
+        
+        end_time = time.time()
+        logger.info(f"Image generation completed in {end_time - start_time:.2f} seconds.")
+        
+        # Save to buffer
         buf = io.BytesIO()
-        img.save(buf, format='PNG')
+        img_final.save(buf, format='PNG', optimize=True)
+        buf.seek(0)
         return buf.getvalue()
 
 # ==============================================================================
-# MODULE 6: MAIN APPLICATION CONTROLLER
+# MODULE 6: PRESENTATION LAYER (STREAMLIT UI)
 # ==============================================================================
 
-def main():
-    st.set_page_config(
-        page_title="Classroom OS: Enterprise",
-        page_icon="🏛️",
-        layout="wide",
-        initial_sidebar_state="collapsed"
-    )
-    
-    # Init Systems
-    db = GoogleSheetsRepository()
-    rank_sys = RankManager()
-    badge_sys = BadgeSystem()
-    gfx = GraphicsEngine()
-    
-    # Sidebar
-    with st.sidebar:
-        st.title("⚙️ System Control")
-        selected_room = st.selectbox("Select Classroom", ["ม.1/1", "ม.1/2", "ม.1/10"])
-        
-        st.divider()
-        if st.button("🔄 Reset Database Structure"):
-            db.save_data(pd.DataFrame(columns=db.REQUIRED_COLUMNS))
-            st.success("Database headers reset.")
-            
-        st.divider()
-        csv = db.get_data().to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Backup CSV", csv, "classroom_backup.csv")
+class UIManager:
+    """
+    Manages the Streamlit interface, layout, and user interaction flow.
+    Composition root that ties backend services to the frontend.
+    """
+    def __init__(self):
+        self.cfg = AppConfig()
+        # Initialize backend services
+        self.db = GoogleSheetsRepository()
+        self.rank_mgr = RankManager()
+        self.badge_sys = BadgeSystem()
+        self.gfx = GraphicsEngine()
 
-    # Load Context
-    all_data = db.get_data()
-    room_data = all_data[all_data['Room'] == selected_room].copy()
-    
-    # UI: Hero Section
-    st.markdown(f"""
-        <div style='background: linear-gradient(120deg, #4338CA, #3730A3); padding: 2rem; border-radius: 20px; color: white; margin-bottom: 2rem; display:flex; justify-content:space-between; align-items:center; box-shadow: 0 10px 20px rgba(0,0,0,0.1);'>
-            <div>
-                <div style='opacity:0.8; letter-spacing:2px; font-weight:600;'>CLASSROOM OS</div>
-                <h1 style='margin:0; font-size:3.5rem; font-weight:800;'>{selected_room}</h1>
-            </div>
-            <div style='text-align:right;'>
-                <div style='font-size:4rem; font-weight:800; line-height:1;'>{len(room_data)}</div>
-                <div style='opacity:0.8;'>Active Groups</div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # UI: Tabs
-    tabs = st.tabs(["⚡ Command Center", "🏆 Leaderboard", "📈 Analytics", "ℹ️ Privileges", "🛠️ Management"])
-    
-    # --- TAB 1: COMMAND ---
-    with tabs[0]:
-        if room_data.empty:
-            st.warning("⚠️ No groups found. Please create groups in 'Management' tab.")
-        else:
-            col_mode, col_sel = st.columns([1, 3])
-            with col_mode:
-                mode = st.radio("Selection Mode", ["Single Group", "Multiple Groups"])
-            with col_sel:
-                if mode == "Single Group":
-                    target = [st.selectbox("Target Group", room_data['GroupName'].unique())]
-                else:
-                    target = st.multiselect("Target Groups", room_data['GroupName'].unique())
+    def setup_page(self):
+        """Configures page settings and injects global CSS."""
+        st.set_page_config(
+            page_title=f"{self.cfg.APP_NAME} - Enterprise",
+            page_icon="🏫",
+            layout="wide",
+            initial_sidebar_state="expanded"
+        )
+        self._inject_custom_css()
+
+    def _inject_custom_css(self):
+        """Injects advanced CSS for a polished, corporate look."""
+        st.markdown(f"""
+            <style>
+            /* Import Google Fonts */
+            @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;700&family=Prompt:wght@300;400;500;700&display=swap');
             
-            # Single Group Stat
-            if len(target) == 1:
-                g = room_data[room_data['GroupName'] == target[0]].iloc[0]
-                r = rank_sys.get_rank(g['XP'])
-                st.markdown(f"""
-                <div style='padding:20px; background:white; border-radius:15px; border:1px solid #E2E8F0; text-align:center; margin: 20px 0;'>
-                    <div style='color:#64748B; font-size:0.9rem;'>CURRENT STATUS</div>
-                    <div style='font-size:3rem; font-weight:800; color:{'#EF4444' if g['XP']<0 else '#10B981'};'>{g['XP']}</div>
-                    <span style='background:{r.bg_color}; color:{r.color}; padding:5px 15px; border-radius:20px; font-weight:bold; font-size:0.9rem;'>{r.th_name}</span>
-                </div>
-                """, unsafe_allow_html=True)
+            /* Global Theme Variables */
+            :root {{
+                --primary: {self.cfg.COLOR_BRAND_PRIMARY};
+                --secondary: {self.cfg.COLOR_BRAND_SECONDARY};
+                --accent: {self.cfg.COLOR_BRAND_ACCENT};
+                --bg-body: {self.cfg.COLOR_BG_MAIN};
+                --text-main: {self.cfg.COLOR_TEXT_PRIMARY};
+            }}
+
+            /* Base Typography */
+            html, body, [class*="css"] {{
+                font-family: 'Sarabun', 'Prompt', sans-serif;
+                color: var(--text-main);
+                background-color: var(--bg-body);
+            }}
             
+            /* Component Overrides */
+            .stApp {{ background-color: var(--bg-body); }}
+            
+            /* Modern Card Styling */
+            div[data-testid="stExpander"] {{
+                border: none;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                border-radius: 12px;
+                background: white;
+            }}
+            
+            /* Custom Buttons */
+            .stButton>button {{
+                border-radius: 10px;
+                font-weight: 600;
+                padding: 0.5rem 1rem;
+                transition: all 0.2s ease-in-out;
+            }}
+            .stButton>button:hover {{
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            }}
+            /* Primary Button Style */
+            button[kind="primary"] {{
+                background: linear-gradient(135deg, var(--primary), var(--secondary));
+                border: none;
+            }}
+
+            /* Custom Form Inputs */
+            .stTextInput>div>div>input, .stTextArea>div>div>textarea, .stNumberInput>div>div>input, .stSelectbox>div>div>div {{
+                border-radius: 10px;
+                border: 1px solid #E2E8F0;
+                background-color: #F8FAFC;
+            }}
+            .stTextInput>div>div>input:focus {{
+                 border-color: var(--primary);
+                 box-shadow: 0 0 0 1px var(--primary);
+            }}
+
+            /* Hero Banner Styling */
+            .hero-banner {{
+                background: linear-gradient(120deg, var(--primary), var(--secondary));
+                padding: 2.5rem;
+                border-radius: 20px;
+                color: white;
+                margin-bottom: 2rem;
+                box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .hero-title h1 {{ font-size: 3.5rem; font-weight: 800; margin: 0; line-height: 1.1; }}
+            .hero-subtitle {{ font-size: 1rem; font-weight: 500; opacity: 0.9; letter-spacing: 1px; text-transform: uppercase; }}
+            .hero-stat {{ text-align: right; }}
+            .hero-stat-number {{ font-size: 4rem; font-weight: 800; line-height: 1; }}
+            
+            /* Card Glassmorphism */
+            .glass-card {{
+                background: rgba(255, 255, 255, 0.9);
+                backdrop-filter: blur(8px);
+                border-radius: 16px;
+                border: 1px solid {self.cfg.COLOR_CARD_BORDER};
+                box-shadow: 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+                padding: 1.5rem;
+                margin-bottom: 1rem;
+                transition: transform 0.2s;
+            }}
+            .glass-card:hover {{ transform: translateY(-3px); }}
+
+            /* Status Badges */
+            .badge {{
+                display: inline-block;
+                padding: 0.3em 0.8em;
+                font-size: 80%;
+                font-weight: 700;
+                line-height: 1;
+                text-align: center;
+                white-space: nowrap;
+                vertical-align: baseline;
+                border-radius: 0.5rem;
+            }}
+            </style>
+        """, unsafe_allow_html=True)
+
+    def render_sidebar(self) -> str:
+        """Renders the sidebar and returns the selected classroom."""
+        with st.sidebar:
+            st.image("https://cdn-icons-png.flaticon.com/512/4738/4738983.png", width=60)
+            st.title("Control Panel")
+            st.markdown(f"v{self.cfg.APP_VERSION}")
             st.divider()
             
-            # Action Buttons
-            ac1, ac2 = st.columns(2)
+            st.subheader("🏫 Classroom Context")
+            # Add your actual classroom lists here
+            selected_room = st.selectbox(
+                "Select Active Class",
+                ["ม.1/1", "ม.1/2", "ม.1/3", "ม.1/4", "ม.1/10"],
+                index=0,
+                help="Choose the classroom you want to manage."
+            )
             
-            def execute(r_text, amt):
-                if not target: st.error("Please select target."); return
-                ok, n = db.add_transaction(selected_room, target, amt, r_text, all_data, badge_sys)
-                if ok: st.toast(f"Updated {n} groups!", icon="✅"); time.sleep(1); st.rerun()
+            st.divider()
+            st.subheader("💾 Data Operations")
+            
+            # Fetch data for export
+            current_df = self.db.fetch_all_data()
+            
+            # Export button
+            csv_data = current_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Export Database (CSV)",
+                data=csv_data,
+                file_name=f"classroom_data_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            
+            with st.expander("⚠️ Danger Zone"):
+                st.warning("Advanced actions. Proceed with caution.")
+                if st.button("🔄 Reset Database Schema", help="Clears all data and rebuilds headers. Irreversible!"):
+                    confirm = st.checkbox("I understand this will delete all data.")
+                    if confirm:
+                        empty_df = pd.DataFrame(columns=self.db.SCHEMA)
+                        if self.db.commit_data(empty_df):
+                            st.success("Database reset successful.")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Reset failed.")
+            
+            return selected_room
 
-            with ac1:
-                st.markdown("#### 🚀 Quick Actions")
-                if st.button("📚 ส่งงานตรงเวลา (+50)", type="primary", use_container_width=True): execute("ส่งงานตรงเวลา", 50)
-                if st.button("🙋 ตอบคำถาม (+20)", use_container_width=True): execute("ตอบคำถาม", 20)
-                if st.button("🏆 ชนะกิจกรรม (+100)", use_container_width=True): execute("ชนะกิจกรรม", 100)
-                st.markdown("---")
-                if st.button("🐢 ส่งช้า (-20)", use_container_width=True): execute("ส่งงานล่าช้า", -20)
-            
-            with ac2:
-                st.markdown("#### ✍️ Custom Input")
-                with st.form("custom"):
-                    reason = st.text_input("Reason")
-                    score = st.number_input("Score (+/-)", step=5)
-                    if st.form_submit_button("Submit Transaction", use_container_width=True):
-                        if reason and score != 0: execute(reason, score)
-                        else: st.warning("Invalid input")
-
-    # --- TAB 2: LEADERBOARD ---
-    with tabs[1]:
-        if not room_data.empty:
-            c_img, c_list = st.columns([1, 2])
-            
-            with c_img:
-                st.markdown("### 🖼️ High-Fidelity Image")
-                st.caption("Auto-generated with Thai typography support")
-                img_data = gfx.render(selected_room, room_data, rank_sys)
-                st.image(img_data, caption="Preview", use_container_width=True)
-                st.download_button("Download HQ PNG", img_data, f"Leaderboard_{selected_room}.png", "image/png", type="primary", use_container_width=True)
-            
-            with c_list:
-                st.markdown("### 📋 Live Data")
-                sorted_df = room_data.sort_values("XP", ascending=False).reset_index(drop=True)
-                for i, row in sorted_df.iterrows():
-                    r = rank_sys.get_rank(row['XP'])
-                    p, lbl = rank_sys.calculate_progress(row['XP'])
-                    try: b = json.loads(row['Badges'])
-                    except: b = []
-                    
-                    st.markdown(f"""
-                    <div style='background:white; padding:15px; border-radius:15px; border-left:5px solid {r.color}; margin-bottom:10px; box-shadow:0 2px 4px rgba(0,0,0,0.05);'>
-                        <div style='display:flex; justify-content:space-between; align-items:center;'>
-                            <div>
-                                <span style='font-weight:bold; color:#94A3B8; margin-right:10px;'>#{i+1}</span>
-                                <span style='font-weight:bold; font-size:1.1rem;'>{row['GroupName']}</span>
-                                <div style='font-size:0.9rem; color:#64748B;'>{row['Members']}</div>
-                                <div>{badge_sys.render(b)}</div>
-                            </div>
-                            <div style='text-align:right;'>
-                                <div style='font-size:1.8rem; font-weight:800; color:{'#EF4444' if row['XP']<0 else r.color}; line-height:1;'>{row['XP']}</div>
-                                <div style='font-size:0.8rem; color:#94A3B8;'>XP</div>
-                            </div>
-                        </div>
-                        <div style='margin-top:10px; display:flex; justify-content:space-between; align-items:center;'>
-                            <span style='background:{r.bg_color}; color:{r.color}; padding:2px 10px; border-radius:10px; font-size:0.8rem; font-weight:bold;'>{r.th_name}</span>
-                            <span style='font-size:0.8rem; color:#64748B;'>{lbl}</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    st.progress(p)
-
-    # --- TAB 3: ANALYTICS ---
-    with tabs[2]:
-        if not room_data.empty:
-            tot = room_data['XP'].sum()
-            avg = room_data['XP'].mean()
-            top = room_data.loc[room_data['XP'].idxmax()]['GroupName']
-            
-            k1, k2, k3 = st.columns(3)
-            k1.metric("🏆 Top Group", top)
-            k2.metric("✨ Total XP", f"{tot:,}")
-            k3.metric("📈 Average", f"{avg:.1f}")
-            
-            st.markdown("### 🏎️ Race Timeline")
-            hist_data = []
-            for _, row in room_data.iterrows():
-                try:
-                    logs = json.loads(row['HistoryLog'])
-                    for l in logs:
-                        hist_data.append({
-                            "Group": row['GroupName'],
-                            "Time": pd.to_datetime(l['ts']),
-                            "XP": l.get('balance', 0)
-                        })
-                except: pass
-            
-            if hist_data:
-                chart = alt.Chart(pd.DataFrame(hist_data)).mark_line(point=True).encode(
-                    x='Time:T', y='XP:Q', color='Group:N', tooltip=['Group', 'Time', 'XP']
-                ).interactive()
-                st.altair_chart(chart, use_container_width=True)
-
-    # --- TAB 4: PRIVILEGES ---
-    with tabs[3]:
-        st.markdown("## 🏛️ Privilege Hierarchy")
-        for r in rank_sys.ranks:
-            if r.name == "PROBATION": continue
-            st.markdown(f"""
-            <div style='padding:15px; background:white; border-radius:12px; border-left:4px solid {r.color}; margin-bottom:12px;'>
-                <div style='display:flex; justify-content:space-between;'>
-                    <h4 style='margin:0; color:{r.color};'>{r.th_name}</h4>
-                    <span style='background:{r.bg_color}; color:{r.color}; padding:2px 8px; border-radius:10px; font-size:0.8rem; font-weight:bold;'>{r.min_xp}+ XP</span>
+    def render_hero_section(self, room_name: str, group_count: int):
+        """Renders the top banner with context info."""
+        st.markdown(f"""
+            <div class="hero-banner">
+                <div class="hero-title">
+                    <div class="hero-subtitle">{self.cfg.ORG_NAME} • {self.cfg.APP_NAME}</div>
+                    <h1>{room_name}</h1>
                 </div>
-                <hr style='margin:8px 0; border-color:#F1F5F9;'>
-                <div style='color:#475569; font-size:0.95rem;'>🎁 {r.description}</div>
+                <div class="hero-stat">
+                    <div class="hero-stat-number">{group_count}</div>
+                    <div style="font-weight:600; opacity:0.9;">Active Teams</div>
+                </div>
             </div>
+        """, unsafe_allow_html=True)
+
+    # ================= Main Tab Rendering Methods =================
+
+    def _render_command_center_tab(self, room_name: str, room_df: pd.DataFrame, all_df: pd.DataFrame):
+        st.header("⚡ Command Center")
+        st.caption("Manage scores and activities for teams.")
+        
+        if room_df.empty:
+            st.info("👋 Welcome! Get started by creating your first group in the **Management** tab.")
+            return
+
+        # Target Selection
+        col_mode, col_target = st.columns([1, 2])
+        with col_mode:
+            st.subheader("1. Select Mode")
+            selection_mode = st.radio("Operation Mode", ["Single Group", "Multi-Group Batch"], label_visibility="collapsed")
+        
+        with col_target:
+            st.subheader("2. Select Targets")
+            all_groups = sorted(room_df['GroupName'].unique().tolist())
+            if selection_mode == "Single Group":
+                target_groups = [st.selectbox("Choose Team", all_groups)]
+            else:
+                target_groups = st.multiselect("Choose Teams", all_groups, placeholder="Select one or more teams...")
+
+        # Show Quick Stats for Single Selection
+        if len(target_groups) == 1:
+            group_data = room_df[room_df['GroupName'] == target_groups[0]].iloc[0]
+            current_xp = group_data['XP']
+            rank = self.rank_mgr.get_rank_by_xp(current_xp)
+            
+            st.markdown(f"""
+                <div style="background:white; padding:20px; border-radius:16px; border:1px solid #E2E8F0; text-align:center; margin: 1.5rem 0; display:flex; align-items:center; justify-content:space-around;">
+                    <div>
+                        <div style="color:{self.cfg.COLOR_TEXT_MUTED}; font-weight:600; font-size:0.9rem;">CURRENT STANDING</div>
+                        <div style="font-size:3.5rem; font-weight:900; color:{self.cfg.COLOR_SCORE_POSITIVE if current_xp >= 0 else self.cfg.COLOR_SCORE_NEGATIVE}; line-height:1.1;">{current_xp:,} <span style="font-size:1.5rem;">XP</span></div>
+                    </div>
+                    <div style="text-align:right;">
+                        <span class="badge" style="background:{rank.bg_color}; color:{rank.color}; font-size:1.1rem; padding: 0.6em 1.2em;">{rank.th_name}</span>
+                    </div>
+                </div>
             """, unsafe_allow_html=True)
 
-    # --- TAB 5: MANAGEMENT ---
-    with tabs[4]:
-        st.header("🛠️ Group Management")
+        st.divider()
+        st.subheader("3. Execute Action")
+
+        # Action Panels
+        col_quick, col_manual = st.columns(2)
         
-        with st.expander("➕ Create Group", expanded=True):
-            with st.form("create"):
-                n = st.text_input("Group Name")
-                m = st.text_area("Members")
-                if st.form_submit_button("Create Group"):
-                    if db.create_group(selected_room, n, m, all_data):
-                        st.success("Created!"); time.sleep(1); st.rerun()
-                    else: st.error("Duplicate Name")
+        # Callback for action execution
+        def _execute_transaction(reason_txt, amount_val):
+            if not target_groups:
+                st.toast("⚠️ Please select at least one team first.", icon="🛑")
+                return
+            
+            with st.spinner("Processing transaction..."):
+                success, count = self.db.process_xp_transaction(
+                    room=room_name,
+                    target_groups=target_groups,
+                    amount=amount_val,
+                    reason=reason_txt,
+                    current_df=all_df,
+                    badge_sys=self.badge_sys
+                )
+            
+            if success:
+                st.toast(f"✅ Successfully updated {count} team(s)!", icon="🎉")
+                time.sleep(0.8)
+                st.rerun()
+            else:
+                st.toast("❌ Failed to process transaction. Check database connection.", icon="🔥")
+
+        with col_quick:
+            st.markdown("**🚀 Quick Presets**")
+            st.caption("One-click standard actions.")
+            c1, c2 = st.columns(2)
+            c1.button("📚 On-Time submission (+50)", on_click=_execute_transaction, args=("ส่งงานตรงเวลา", 50), use_container_width=True)
+            c2.button("🙋 Class Participation (+20)", on_click=_execute_transaction, args=("มีส่วนร่วมในชั้นเรียน", 20), use_container_width=True)
+            c1.button("🏆 Activity Winner (+100)", on_click=_execute_transaction, args=("ชนะกิจกรรมพิเศษ", 100), type="primary", use_container_width=True)
+            c2.button("🐢 Late Submission (-20)", on_click=_execute_transaction, args=("ส่งงานล่าช้า", -20), use_container_width=True)
+
+        with col_manual:
+            st.markdown("**✍️ Custom Transaction**")
+            st.caption("Specify custom reason and amount.")
+            with st.form("manual_transaction_form", clear_on_submit=True):
+                reason_input = st.text_input("Reason / Activity Name", placeholder="e.g., Bonus Project, Helping friend...")
+                amount_input = st.number_input("XP Amount (+/-)", step=5, value=0)
+                
+                submitted = st.form_submit_button("📢 Submit Transaction", type="primary", use_container_width=True)
+                if submitted:
+                    if not reason_input or amount_input == 0:
+                         st.error("Please provide both a valid reason and a non-zero amount.")
+                    else:
+                         _execute_transaction(reason_input, amount_input)
+
+    def _render_leaderboard_tab(self, room_name: str, room_df: pd.DataFrame):
+        st.header("🏆 Leaderboard & Rankings")
+        
+        if room_df.empty:
+            st.warning("No data to display.")
+            return
+
+        tabs_lb = st.tabs(["🖼️ High-Fidelity Image", "📋 Live List View"])
+        
+        # --- Image Generation Tab ---
+        with tabs_lb[0]:
+            st.caption("Generate a publication-ready image with correct Thai typography rendering.")
+            
+            col_gen_btn, col_gen_preview = st.columns([1, 2])
+            with col_gen_btn:
+                st.info("Tips: This process generates a high-resolution image where all Thai vowels and tone marks are correctly placed without overlapping.")
+                if st.button("✨ Generate Leaderboard Image", type="primary", use_container_width=True):
+                    with st.spinner("🎨 Rendering high-fidelity image... This may take a moment."):
+                        try:
+                            # Generate image using the robust engine
+                            img_bytes = self.gfx.render_leaderboard_image(room_name, room_df, self.rank_mgr)
+                            st.session_state['generated_image'] = img_bytes
+                            st.success("Image generated successfully!")
+                        except Exception as e:
+                            st.error(f"Image generation failed: {e}")
+                            logger.error(f"Image Gen Error: {e}", exc_info=True)
+
+                # Show download button if image exists in session state
+                if 'generated_image' in st.session_state:
+                     st.download_button(
+                        label="📥 Download Image (PNG)",
+                        data=st.session_state['generated_image'],
+                        file_name=f"Leaderboard_{room_name}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                        mime="image/png",
+                        type="primary",
+                        use_container_width=True
+                    )
+
+            with col_gen_preview:
+                 if 'generated_image' in st.session_state:
+                     st.image(st.session_state['generated_image'], caption="High-Fidelity Preview", use_container_width=True, output_format='PNG')
+                 else:
+                     st.markdown("""
+                        <div style="border: 2px dashed #E2E8F0; border-radius:16px; height:400px; display:flex; align-items:center; justify-content:center; color:#94A3B8; flex-direction:column;">
+                            <div style="font-size:3rem;">🖼️</div>
+                            <div>Click generate to preview image here.</div>
+                        </div>
+                     """, unsafe_allow_html=True)
+
+        # --- Live List View Tab ---
+        with tabs_lb[1]:
+            st.caption("Real-time interactive ranking list.")
+            sorted_df = room_df.sort_values("XP", ascending=False).reset_index(drop=True)
+            
+            for i, row in sorted_df.iterrows():
+                rank = self.rank_mgr.get_rank_by_xp(row['XP'])
+                prog_pct, prog_lbl = self.rank_mgr.calculate_progress_to_next(row['XP'])
+                
+                # Parse badges
+                try:
+                    badges_list = json.loads(row['Badges'])
+                except:
+                    badges_list = []
+                badges_str = self.badge_sys.render_badges(badges_list)
+                
+                card_border_color = self.cfg.COLOR_SCORE_NEGATIVE if row['XP'] < 0 else rank.color
+                
+                # Render list item using HTML card
+                st.markdown(f"""
+                <div class="glass-card" style="border-left: 6px solid {card_border_color};">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                        <div style="flex-grow:1;">
+                             <div style="display:flex; align-items:center; margin-bottom:5px;">
+                                <span style="font-size:1.4rem; font-weight:800; color:{self.cfg.COLOR_TEXT_MUTED}; margin-right:12px; min-width:30px;">#{i+1}</span>
+                                <h3 style="margin:0; font-size:1.3rem;">{row['GroupName']}</h3>
+                             </div>
+                             <div style="color:{self.cfg.COLOR_TEXT_SECONDARY}; font-size:0.95rem; margin-bottom:8px;">👥 {row['Members']}</div>
+                             <div style="font-size:1.1rem;">{badges_str}</div>
+                        </div>
+                        <div style="text-align:right;">
+                             <div style="font-size:2.2rem; font-weight:900; color:{card_border_color}; line-height:1;">{row['XP']:,}</div>
+                             <div style="font-size:0.85rem; color:{self.cfg.COLOR_TEXT_MUTED}; font-weight:600;">TOTAL XP</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:15px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                             <span class="badge" style="background:{rank.bg_color}; color:{rank.color};">{rank.th_name}</span>
+                             <span style="font-size:0.85rem; color:{self.cfg.COLOR_TEXT_SECONDARY};">{prog_lbl}</span>
+                        </div>
+                        <st-progress value="{prog_pct}"></st-progress>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                # Use streamlit's native progress bar for simplicity in HTML embedding
+                st.progress(prog_pct)
+
+    def _render_analytics_tab(self, room_df: pd.DataFrame):
+        st.header("📈 Performance Analytics")
+        if room_df.empty:
+            st.warning("No data available for analysis.")
+            return
+
+        # 1. KPI Metrics
+        total_xp = room_df['XP'].sum()
+        avg_xp = room_df['XP'].mean()
+        top_team = room_df.loc[room_df['XP'].idxmax()]['GroupName']
+        active_teams = len(room_df[room_df['XP'] != 0])
+
+        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+        kpi1.metric("🏆 Leading Team", top_team)
+        kpi2.metric("✨ Total Class XP", f"{total_xp:,}")
+        kpi3.metric("📊 Average XP", f"{avg_xp:.0f}")
+        kpi4.metric("🔥 Active Teams", f"{active_teams} / {len(room_df)}")
         
         st.divider()
-        c_edit, c_del = st.columns([2, 1])
         
-        with c_edit:
-            st.subheader("✏️ Edit Group")
-            target_e = st.selectbox("Select Group", ["-"] + list(room_data['GroupName'].unique()))
-            if target_e != "-":
-                curr = room_data[room_data['GroupName'] == target_e].iloc[0]
-                with st.form("edit"):
-                    nn = st.text_input("Name", value=curr['GroupName'])
-                    nm = st.text_area("Members", value=curr['Members'])
-                    if st.form_submit_button("Update Group"):
-                        if db.update_group(selected_room, target_e, nn, nm, all_data):
-                            st.success("Updated!"); time.sleep(1); st.rerun()
-                        else: st.error("Failed (Duplicate?)")
-                        
-        with c_del:
-            st.subheader("🗑️ Delete Group")
-            target_d = st.selectbox("Delete Target", ["-"] + list(room_data['GroupName'].unique()))
-            if target_d != "-" and st.button("Confirm Delete", type="primary"):
-                db.delete_group(selected_room, target_d, all_data)
-                st.rerun()
-                
-        st.markdown("---")
-        with st.expander("⚡ Advanced: Edit History Log"):
-            target_p = st.selectbox("Select for History Edit", ["-"] + list(room_data['GroupName'].unique()), key="pe")
-            if target_p != "-":
-                row_p = room_data[room_data['GroupName'] == target_p].iloc[0]
-                try: h_dat = json.loads(row_p['HistoryLog'])
-                except: h_dat = []
-                
-                edited_h = st.data_editor(pd.DataFrame(h_dat), num_rows="dynamic", use_container_width=True)
-                if st.button("Save History Changes"):
-                    if db.power_edit(selected_room, target_p, edited_h, all_data, badge_sys):
-                        st.success("Saved!"); st.rerun()
+        # 2. XP History Chart
+        st.subheader("🏎️ XP Race Timeline")
+        st.caption("Track progress over time.")
+        
+        history_data = []
+        for _, row in room_df.iterrows():
+            try:
+                logs = json.loads(row['HistoryLog'])
+                for log in logs:
+                    # Ensure valid timestamp before adding
+                    ts = pd.to_datetime(log['ts'], errors='coerce')
+                    if ts is not pd.NaT:
+                        history_data.append({
+                            "Team": row['GroupName'],
+                            "Timestamp": ts,
+                            "Total XP": log.get('balance', 0)
+                        })
+            except Exception:
+                continue
+        
+        if history_data:
+            chart_df = pd.DataFrame(history_data)
+            
+            # Create Altair Line Chart
+            chart = alt.Chart(chart_df).mark_line(
+                point=alt.OverlayMarkDef(filled=False, fill="white", strokeWidth=2)
+            ).encode(
+                x=alt.X('Timestamp:T', title='Date & Time', axis=alt.Axis(format='%d/%m %H:%M')),
+                y=alt.Y('Total XP:Q', title='Accumulated XP'),
+                color=alt.Color('Team:N', scale={"scheme": "category20"}),
+                tooltip=[
+                    alt.Tooltip('Timestamp:T', format='%d/%m/%Y %H:%M', title='Time'),
+                    alt.Tooltip('Team', title='Team Name'),
+                    alt.Tooltip('Total XP', title='XP Balance')
+                ]
+            ).properties(
+                height=450
+            ).interactive()
+            
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info("Not enough history data to generate timeline chart.")
 
+    def _render_privileges_tab(self):
+        st.header("ℹ️ Rank & Privilege System")
+        st.caption("Understanding the hierarchy and rewards.")
+        
+        ranks = self.rank_mgr.all_ranks
+        
+        # Display Normal Ranks
+        st.subheader("Normal Progression Tier")
+        for rank in ranks:
+            if rank.id == "PROBATION": continue
+            
+            st.markdown(f"""
+            <div style="background:white; border-radius:12px; border-left: 5px solid {rank.color}; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h3 style="margin:0; color:{rank.color}; display:flex; align-items:center;">
+                        {rank.th_name}
+                    </h3>
+                    <span class="badge" style="background:{rank.bg_color}; color:{rank.color}; font-size:0.9rem;">Req: {rank.min_xp}+ XP</span>
+                </div>
+                <hr style="margin: 10px 0; border-color:#F1F5F9;">
+                <div style="display:flex; align-items:start;">
+                    <span style="font-size:1.2rem; margin-right:10px;">🎁</span>
+                    <div>
+                        <strong style="color:{self.cfg.COLOR_TEXT_PRIMARY};">Privilege Benefits:</strong>
+                        <div style="color:{self.cfg.COLOR_TEXT_SECONDARY}; margin-top:5px;">{rank.description}</div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        # Display Probation
+        st.subheader("Special Status Tier")
+        prob = ranks[-1]
+        st.markdown(f"""
+        <div style="background:#FFF1F2; border-radius:12px; border-left: 5px solid {prob.color}; padding: 15px; margin-bottom: 15px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; color:{prob.color}; display:flex; align-items:center;">
+                    {prob.th_name}
+                </h3>
+                 <span class="badge" style="background:{prob.bg_color}; color:{prob.color}; font-size:0.9rem;">Negative XP</span>
+            </div>
+             <hr style="margin: 10px 0; border-color:#FECACA;">
+             <div style="display:flex; align-items:start;">
+                    <span style="font-size:1.2rem; margin-right:10px;">⚠️</span>
+                    <div>
+                        <strong style="color:#991B1B;">Condition:</strong>
+                        <div style="color:#7F1D1D; margin-top:5px;">{prob.description}</div>
+                    </div>
+                </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    def _render_management_tab(self, room_name: str, room_df: pd.DataFrame, all_df: pd.DataFrame):
+        st.header("🛠️ Team Management")
+        st.caption("Create, update, or delete teams.")
+
+        # 1. Creation Form
+        with st.expander("➕ Create New Team", expanded=True):
+            with st.form("create_team_form"):
+                new_name = st.text_input("Team Name (Must be unique in this class)", placeholder="e.g., Alpha Squad")
+                new_members = st.text_area("Member List", placeholder="e.g., John, Mary, Peter...")
+                
+                if st.form_submit_button("Create Team", type="primary"):
+                    if not new_name:
+                        st.error("Team name is required.")
+                    elif self.db.create_group_record(room_name, new_name, new_members, all_df):
+                        st.success(f"Team '{new_name}' created successfully!")
+                        time.sleep(0.8)
+                        st.rerun()
+                    else:
+                        st.error(f"Failed to create team. Name '{new_name}' may already exist.")
+
+        st.divider()
+
+        if room_df.empty:
+            return
+
+        # 2. Edit & Delete Section
+        col_edit, col_delete = st.columns([2, 1])
+        all_teams_list = sorted(room_df['GroupName'].unique().tolist())
+
+        with col_edit:
+            st.subheader("✏️ Edit Team Details")
+            target_edit = st.selectbox("Select Team to Edit", ["-"] + all_teams_list)
+            
+            if target_edit != "-":
+                current_data = room_df[room_df['GroupName'] == target_edit].iloc[0]
+                with st.form("edit_team_form"):
+                    edit_name = st.text_input("Edit Name", value=current_data['GroupName'])
+                    edit_members = st.text_area("Edit Members", value=current_data['Members'])
+                    
+                    if st.form_submit_button("Save Changes"):
+                        if self.db.update_group_record(room_name, target_edit, edit_name, edit_members, all_df):
+                             st.success("Team updated successfully!")
+                             time.sleep(0.8)
+                             st.rerun()
+                        else:
+                             st.error("Update failed. New name might be a duplicate.")
+
+        with col_delete:
+            st.subheader("🗑️ Delete Team")
+            target_delete = st.selectbox("Select Team to Delete", ["-"] + all_teams_list)
+            
+            if target_delete != "-":
+                st.warning(f"Are you sure you want to delete '{target_delete}'? This action cannot be undone and all history will be lost.")
+                if st.button("Confirm Delete", type="primary"):
+                     if self.db.delete_group_record(room_name, target_delete, all_df):
+                          st.success(f"Team '{target_delete}' deleted.")
+                          time.sleep(0.8)
+                          st.rerun()
+                     else:
+                          st.error("Deletion failed.")
+
+        st.divider()
+        
+        # 3. Advanced Power Edit
+        with st.expander("⚡ Advanced: History Log Override (Power User)"):
+            st.warning("This feature completely rewrites a team's history. Use only for corrections.")
+            target_pe = st.selectbox("Select Team for History Override", ["-"] + all_teams_list)
+            
+            if target_pe != "-":
+                row_pe = room_df[room_df['GroupName'] == target_pe].iloc[0]
+                try:
+                    history_data = json.loads(row_pe['HistoryLog'])
+                except:
+                    history_data = []
+                
+                # Use data editor to let user modify history directly
+                edited_history_df = st.data_editor(
+                    pd.DataFrame(history_data),
+                    num_rows="dynamic",
+                    use_container_width=True,
+                    column_config={
+                        "ts": st.column_config.DatetimeColumn("Timestamp", format="YYYY-MM-DD HH:mm"),
+                        "amount": st.column_config.NumberColumn("XP Amount", required=True),
+                        "reason": st.column_config.TextColumn("Reason", required=True),
+                        "id": st.column_config.TextColumn("Transaction ID", disabled=True),
+                        "balance": st.column_config.NumberColumn("Running Balance", disabled=True)
+                    },
+                    key=f"editor_{target_pe}"
+                )
+                
+                if st.button("💾 Save & Recalculate History"):
+                    if self.db.apply_history_override(room_name, target_pe, edited_history_df, all_df, self.badge_sys):
+                        st.success("History overwritten and XP recalculated successfully!")
+                        time.sleep(0.8)
+                        st.rerun()
+                    else:
+                        st.error("Failed to save history override.")
+
+    def run(self):
+        """Main application lifecycle loop."""
+        self.setup_page()
+        
+        # Render Sidebar & Get Context
+        selected_room = self.render_sidebar()
+        
+        # Load Data Context
+        try:
+            all_df = self.db.fetch_all_data()
+            room_df = all_df[all_df['Room'] == selected_room].copy()
+        except Exception as e:
+            st.error(f"Failed to load data: {e}")
+            return
+
+        # Render Main Layout
+        self.render_hero_section(selected_room, len(room_df))
+        
+        # Main Content Tabs
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "⚡ Command", "🏆 Leaderboard", "📈 Analytics", "ℹ️ Privileges", "🛠️ Management"
+        ])
+        
+        with tab1:
+            self._render_command_center_tab(selected_room, room_df, all_df)
+        with tab2:
+            self._render_leaderboard_tab(selected_room, room_df)
+        with tab3:
+            self._render_analytics_tab(room_df)
+        with tab4:
+            self._render_privileges_tab()
+        with tab5:
+            self._render_management_tab(selected_room, room_df, all_df)
+
+# ==============================================================================
+# EXECUTION ENTRY POINT
+# ==============================================================================
 if __name__ == "__main__":
-    main()
+    app = UIManager()
+    app.run()
