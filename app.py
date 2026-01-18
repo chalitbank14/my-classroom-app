@@ -57,11 +57,11 @@ class AppConfig:
     DB_MAIN_WORKSHEET: str = "Sheet1"
     DB_CACHE_TTL: int = 0  # No caching for real-time updates
 
-    # Image Generation Constants (High Resolution & Spacing)
+    # Image Generation Constants
     IMG_WIDTH: int = 1400
     IMG_HEADER_HEIGHT: int = 700
-    # INCREASED ROW HEIGHT to provide ample vertical space for Thai ascenders/descenders
-    IMG_ROW_HEIGHT: int = 500   
+    # แก้ไข: เพิ่มความสูงจาก 500 เป็น 650 เพื่อให้มีที่ว่างสำหรับสระลอย
+    IMG_ROW_HEIGHT: int = 650   
     IMG_FOOTER_HEIGHT: int = 150
     IMG_PADDING_X: int = 50
     IMG_CARD_RADIUS: int = 35
@@ -71,13 +71,15 @@ class AppConfig:
     FONT_PRIMARY_REG: str = "Sarabun-Regular.ttf"
 
     # Color Palette (Modern Corporate Theme)
-    COLOR_BRAND_PRIMARY: str = "#4338CA"    # Deep Indigo
-    COLOR_BRAND_SECONDARY: str = "#3730A3"  # Darker Indigo
-    COLOR_BRAND_ACCENT: str = "#A5B4FC"     # Light Indigo
+    COLOR_BRAND_PRIMARY: str = "#4338CA"
+    COLOR_BRAND_SECONDARY: str = "#3730A3"
+    COLOR_BRAND_ACCENT: str = "#A5B4FC"
     
-    COLOR_BG_MAIN: str = "#F1F5F9"          # Light Gray Background
-    COLOR_CARD_SURFACE: str = "#FFFFFF"     # White Card
-    COLOR_CARD_BORDER: str = "#E2E8F0"      # Light Border
+    # แก้ไข: เปลี่ยนจาก COLOR_BG_MAIN เป็น COLOR_BACKGROUND ให้ตรงกับที่อื่นเรียกใช้
+    COLOR_BACKGROUND: str = "#F1F5F9"      # Light Gray Background
+    
+    COLOR_CARD_SURFACE: str = "#FFFFFF"
+    COLOR_CARD_BORDER: str = "#E2E8F0"
     COLOR_CARD_SHADOW: str = "#94A3B8"      # Shadow Tone
     
     COLOR_TEXT_PRIMARY: str = "#1E293B"     # Dark Slate
@@ -395,48 +397,49 @@ class GoogleSheetsRepository:
         updated_df = current_df[keep_mask]
         return self.commit_data(updated_df)
 
-    def process_xp_transaction(self, room: str, target_groups: List[str], amount: int, reason: str, 
+def process_xp_transaction(self, room: str, target_groups: List[str], amount: int, reason: str, 
                                current_df: pd.DataFrame, badge_sys: BadgeSystem) -> Tuple[bool, int]:
         """
-        Applies an XP transaction to multiple groups, updating history and badges.
-        Returns: (success status, count of updated groups)
+        Applies an XP transaction to multiple groups using Atomic Batch strategy.
+        Updates all groups in memory first, then performs a SINGLE database commit.
         """
         updated_count = 0
         timestamp = datetime.now()
         ts_str = timestamp.strftime("%Y-%m-%d %H:%M")
         
+        # 1. วนลูปอัปเดตข้อมูลใน DataFrame (หน่วยความจำ) ให้ครบทุกกลุ่มก่อน
         for group_name in target_groups:
+            # ค้นหาแถวที่ต้องการ
             mask = (current_df['Room'] == room) & (current_df['GroupName'] == group_name)
+            
             if mask.any():
                 idx = current_df[mask].index[0]
                 
-                # 1. Parse existing history
+                # A. ดึงประวัติเก่า
                 try:
                     history_list = json.loads(current_df.at[idx, 'HistoryLog'])
                 except json.JSONDecodeError:
                     history_list = []
                 
-                # 2. Create new log entry
+                # B. สร้าง Log ใหม่
                 new_log = {
                     "id": str(uuid.uuid4())[:8],
                     "ts": ts_str,
                     "reason": reason,
                     "amount": int(amount)
-                    # 'balance' will be calculated next
                 }
                 
-                # 3. Insert new log at the beginning (newest first)
+                # C. ใส่ Log ใหม่ไว้บนสุด
                 history_list.insert(0, new_log)
                 
-                # 4. Recalculate total balance from history
+                # D. คำนวณยอดรวมใหม่ (Re-calculate Balance)
                 new_balance = sum(item['amount'] for item in history_list)
-                # Update the balance on the newest entry
                 history_list[0]['balance'] = new_balance
                 
-                # 5. Evaluate badges based on new state
+                # E. คำนวณเหรียญรางวัลใหม่
                 new_badges = badge_sys.evaluate_badges(new_balance, history_list)
                 
-                # 6. Update DataFrame fields
+                # F. อัปเดตค่าลงใน DataFrame (ยังไม่บันทึกเข้า Google Sheets)
                 current_df.at[idx, 'XP'] = new_balance
                 current_df.at[idx, 'HistoryLog'] = json.dumps(history_list, ensure_ascii=False)
                 current_df.at[idx, 'Badges'] = json.dumps(new_badges, ensure_ascii=False)
@@ -444,11 +447,13 @@ class GoogleSheetsRepository:
                 
                 updated_count += 1
         
+        # 2. บันทึกครั้งเดียว (Atomic Commit) หลังจากคำนวณครบทุกกลุ่มแล้ว
+        # ถ้าเน็ตหลุดก่อนถึงบรรทัดนี้ ข้อมูลจะไม่ถูกบันทึกเลย (ปลอดภัยกว่าบันทึกครึ่งๆ กลางๆ)
         if updated_count > 0:
             success = self.commit_data(current_df)
             return success, updated_count
+            
         return False, 0
-
     def apply_history_override(self, room: str, group_name: str, new_history_df: pd.DataFrame, 
                                current_df: pd.DataFrame, badge_sys: BadgeSystem) -> bool:
         """
@@ -568,6 +573,36 @@ class GraphicsEngine:
         # This is crucial for predictable stacking of Thai text.
         draw.text((x, y), text, font=font, fill=color, anchor=anchor)
 
+# [ADD THIS] เพิ่มฟังก์ชันนี้ลงใน Class GraphicsEngine
+    def _draw_vector_medal(self, draw: ImageDraw.Draw, x: int, y: int, color_hex: str, rank_idx: int):
+        """วาดสติกเกอร์เหรียญรางวัลแบบ Vector (แก้ปัญหากล่องสี่เหลี่ยม)"""
+        # 1. ริบบิ้น (Ribbon V-Shape)
+        ribbon_color = "#EF4444"
+        draw.polygon([
+            (x - 20, y - 90), (x - 20, y - 50), (x, y - 20), (x + 20, y - 50), (x + 20, y - 90)
+        ], fill=ribbon_color)
+        
+        # 2. ขอบเหรียญ (White Border)
+        r_outer = 85
+        draw.ellipse([(x - r_outer, y - r_outer), (x + r_outer, y + r_outer)], fill="#FFFFFF")
+        
+        # 3. ตัวเหรียญ (Inner Body - Rank Color)
+        r_inner = 75
+        draw.ellipse([(x - r_inner, y - r_inner), (x + r_inner, y + r_inner)], fill=color_hex)
+        
+        # 4. เงาวาว (Gloss Effect) - ใช้ Chord วาดแสงสะท้อน
+        draw.chord([(x - r_inner, y - r_inner), (x + r_inner, y + r_inner)], 180, 360, fill="#FFFFFF40")
+
+    # [ADD THIS] เพิ่มฟังก์ชันนี้ลงใน Class GraphicsEngine
+    def _draw_vector_trophy(self, draw: ImageDraw.Draw, cx: int, y: int):
+        """วาดถ้วยรางวัลแบบ Vector สำหรับหัวกระดาษ (แก้ปัญหากล่องสี่เหลี่ยม)"""
+        # ตัวถ้วย
+        draw.polygon([(cx - 60, y), (cx + 60, y), (cx + 30, y + 100), (cx - 30, y + 100)], fill="#FFD700")
+        # ขอบปากถ้วย
+        draw.ellipse([(cx - 60, y - 10), (cx + 60, y + 10)], fill="#FFC107")
+        # ฐานถ้วย
+        draw.rectangle([(cx - 40, y + 100), (cx + 40, y + 120)], fill="#DAA520")
+
     def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manager: RankManager) -> bytes:
         """
         Orchestrates the entire image generation process.
@@ -588,8 +623,8 @@ class GraphicsEngine:
         )
         
         # 3. Initialize Canvas
-        # Use RGBA for potential transparency features, though saving as PNG solid.
-        img = Image.new('RGBA', (self.cfg.IMG_WIDTH, canvas_height), color=self.cfg.COLOR_BG_MAIN)
+        # แก้ไข: เรียกใช้ self.cfg.COLOR_BACKGROUND
+        img = Image.new('RGBA', (self.cfg.IMG_WIDTH, canvas_height), color=self.cfg.COLOR_BACKGROUND)
         draw = ImageDraw.Draw(img)
         
         # ==========================================================================
@@ -605,9 +640,8 @@ class GraphicsEngine:
         # Header Typography
         center_x = self.cfg.IMG_WIDTH // 2
         
-        # Trophy Icon (Text fallback if image icon not used)
-        f_icon = self._get_font(self.cfg.FONT_PRIMARY_REG, 180)
-        draw.text((center_x, 220), "🏆", font=f_icon, fill="white", anchor="mm")
+        # Trophy Icon (Vector Draw - No Emoji)
+        self._draw_vector_trophy(draw, center_x, 180)
         
         # Main Title
         f_title = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 60)
@@ -664,36 +698,34 @@ class GraphicsEngine:
                 radius=self.cfg.IMG_CARD_RADIUS, fill=self.cfg.COLOR_CARD_SURFACE
             )
 
-            # --- COLUMN 1: Rank Position Indicator (Left) ---
-            circle_center_x = card_x_start + 120
-            circle_center_y = card_y_start + (card_height // 2)
-            circle_radius = 75
+            # --- COLUMN 1: Rank Position / Sticker Generation ---
+            sticker_cx = card_x_start + 120
+            sticker_cy = card_y_start + (card_height // 2)
             
-            # Draw colored circle
-            draw.ellipse(
-                [(circle_center_x - circle_radius, circle_center_y - circle_radius),
-                 (circle_center_x + circle_radius, circle_center_y + circle_radius)],
-                fill=rank_color_hex
-            )
-            # Draw rank number
-            draw.text((circle_center_x, circle_center_y), str(i + 1), font=f_rank_num, fill="white", anchor="mm")
+            if i < 3:
+                # วาดเหรียญรางวัลสำหรับ Top 3 (Vector Medal)
+                self._draw_vector_medal(draw, sticker_cx, sticker_cy, rank_color_hex, i)
+            else:
+                # วาดป้ายวงกลมปกติสำหรับอันดับอื่น (Vector Badge)
+                # วาดขอบขาวก่อน
+                draw.ellipse([(sticker_cx - 80, sticker_cy - 80), (sticker_cx + 80, sticker_cy + 80)], fill="#FFFFFF")
+                # วาดวงกลมสี
+                draw.ellipse([(sticker_cx - 70, sticker_cy - 70), (sticker_cx + 70, sticker_cy + 70)], fill=rank_color_hex)
+            
+            # วาดเลขลำดับทับลงไป
+            draw.text((sticker_cx, sticker_cy), str(i + 1), font=f_rank_num, fill="white", anchor="mm")
 
             # --- COLUMN 2: Group Details & Status (Middle) ---
-            # This is the critical section for Thai typography spacing.
-            # We use explicit Y-offsets from the card top for each element.
-            
             content_x_start = card_x_start + 260
-            content_max_width = 650 # Leave room for score on the right
+            content_max_width = 650
             
-            # Define explicit vertical grid relative to card_y_start
-            # Spacing is generous to accommodate tall vowels (สระบน/วรรณยุกต์)
+            # แก้ไข: ปรับระยะห่างแนวตั้ง (Vertical Rhythm) ใหม่ทั้งหมด
+            # เพิ่มระยะห่าง (+100) เพื่อกันสระอุ/อู ชนกับวรรณยุกต์บรรทัดล่าง
             Y_POS_NAME = card_y_start + 60
-            Y_POS_MEMBERS = Y_POS_NAME + 75
-            Y_POS_PROGRESS_BAR = Y_POS_MEMBERS + 60
-            # Large gap before rank info to ensure separation
-            Y_POS_RANK_TITLE = Y_POS_PROGRESS_BAR + 55 
-            # Gap between title and description
-            Y_POS_PRIVILEGE = Y_POS_RANK_TITLE + 55 
+            Y_POS_MEMBERS = Y_POS_NAME + 100        # เดิม +75 (เพิ่มพื้นที่ให้ชื่อกลุ่ม)
+            Y_POS_PROGRESS_BAR = Y_POS_MEMBERS + 100 # เดิม +60 (เพิ่มพื้นที่ให้รายชื่อสมาชิก)
+            Y_POS_RANK_TITLE = Y_POS_PROGRESS_BAR + 70 # เดิม +55
+            Y_POS_PRIVILEGE = Y_POS_RANK_TITLE + 70    # เดิม +55
 
             # 2.1 Group Name (Auto-fit, Bold)
             self._draw_text_with_autofit(
@@ -752,10 +784,12 @@ class GraphicsEngine:
             # D. Advance Cursor for Next Row
             current_y_cursor += self.cfg.IMG_ROW_HEIGHT
 
-        # ==========================================================================
+# ==========================================================================
         # FOOTER SECTION Rendering
         # ==========================================================================
-        footer_y_center = total_height - (self.cfg.IMG_FOOTER_HEIGHT // 2)
+        # แก้ไข: เปลี่ยนจาก total_height เป็น canvas_height ให้ตรงกับที่ประกาศไว้ตอนต้นฟังก์ชัน
+        footer_y_center = canvas_height - (self.cfg.IMG_FOOTER_HEIGHT // 2)
+        
         f_footer = self._get_font(self.cfg.FONT_PRIMARY_REG, 38)
         timestamp_str = datetime.now().strftime('%d/%m/%Y %H:%M')
         footer_text = f"Generated by {self.cfg.APP_NAME} • {timestamp_str}"
@@ -763,7 +797,6 @@ class GraphicsEngine:
         draw.text((self.cfg.IMG_WIDTH // 2, footer_y_center), footer_text, font=f_footer, fill=self.cfg.COLOR_TEXT_MUTED, anchor="mm")
 
         # 4. Finalize Image
-        # Convert RGBA to RGB for PNG saving (removes alpha channel)
         img_final = img.convert('RGB')
         
         end_time = time.time()
@@ -814,7 +847,8 @@ class UIManager:
                 --primary: {self.cfg.COLOR_BRAND_PRIMARY};
                 --secondary: {self.cfg.COLOR_BRAND_SECONDARY};
                 --accent: {self.cfg.COLOR_BRAND_ACCENT};
-                --bg-body: {self.cfg.COLOR_BG_MAIN};
+                /* แก้ไข: เรียกใช้ COLOR_BACKGROUND */
+                --bg-body: {self.cfg.COLOR_BACKGROUND};
                 --text-main: {self.cfg.COLOR_TEXT_PRIMARY};
             }}
 
@@ -922,7 +956,7 @@ class UIManager:
             # Add your actual classroom lists here
             selected_room = st.selectbox(
                 "Select Active Class",
-                ["ม.1/1", "ม.1/2", "ม.1/3", "ม.1/4", "ม.1/10"],
+                ["ม.1/1", "ม.1/2", "ม.1/10"],
                 index=0,
                 help="Choose the classroom you want to manage."
             )
@@ -1163,7 +1197,7 @@ class UIManager:
                 # Use streamlit's native progress bar for simplicity in HTML embedding
                 st.progress(prog_pct)
 
-    def _render_analytics_tab(self, room_df: pd.DataFrame):
+def _render_analytics_tab(self, room_df: pd.DataFrame):
         st.header("📈 Performance Analytics")
         if room_df.empty:
             st.warning("No data available for analysis.")
@@ -1172,59 +1206,48 @@ class UIManager:
         # 1. KPI Metrics
         total_xp = room_df['XP'].sum()
         avg_xp = room_df['XP'].mean()
-        top_team = room_df.loc[room_df['XP'].idxmax()]['GroupName']
-        active_teams = len(room_df[room_df['XP'] != 0])
-
-        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-        kpi1.metric("🏆 Leading Team", top_team)
-        kpi2.metric("✨ Total Class XP", f"{total_xp:,}")
-        kpi3.metric("📊 Average XP", f"{avg_xp:.0f}")
-        kpi4.metric("🔥 Active Teams", f"{active_teams} / {len(room_df)}")
+        
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Class XP", f"{total_xp:,}")
+        col2.metric("Average XP", f"{avg_xp:.0f}")
+        col3.metric("Active Teams", len(room_df))
         
         st.divider()
         
-        # 2. XP History Chart
-        st.subheader("🏎️ XP Race Timeline")
-        st.caption("Track progress over time.")
+        # 2. Bar Chart (แก้ไขใหม่: บังคับแปลงข้อมูลก่อนวาดกราฟ)
+        st.subheader("📊 Team Performance")
         
-        history_data = []
+        # สร้างข้อมูลชุดใหม่ที่สะอาดแน่นอน (Clean Data)
+        clean_data = []
         for _, row in room_df.iterrows():
             try:
-                logs = json.loads(row['HistoryLog'])
-                for log in logs:
-                    # Ensure valid timestamp before adding
-                    ts = pd.to_datetime(log['ts'], errors='coerce')
-                    if ts is not pd.NaT:
-                        history_data.append({
-                            "Team": row['GroupName'],
-                            "Timestamp": ts,
-                            "Total XP": log.get('balance', 0)
-                        })
-            except Exception:
-                continue
+                # บังคับแปลง XP เป็นตัวเลข (ถ้าไม่ได้ให้เป็น 0)
+                safe_xp = int(row['XP'])
+            except:
+                safe_xp = 0
+            
+            clean_data.append({
+                "Team": str(row['GroupName']), # บังคับเป็นข้อความ
+                "XP": safe_xp
+            })
+            
+        # สร้างกราฟจากข้อมูลที่ Clean แล้ว
+        chart_df = pd.DataFrame(clean_data)
         
-        if history_data:
-            chart_df = pd.DataFrame(history_data)
-            
-            # Create Altair Line Chart
-            chart = alt.Chart(chart_df).mark_line(
-                point=alt.OverlayMarkDef(filled=False, fill="white", strokeWidth=2)
-            ).encode(
-                x=alt.X('Timestamp:T', title='Date & Time', axis=alt.Axis(format='%d/%m %H:%M')),
-                y=alt.Y('Total XP:Q', title='Accumulated XP'),
-                color=alt.Color('Team:N', scale={"scheme": "category20"}),
-                tooltip=[
-                    alt.Tooltip('Timestamp:T', format='%d/%m/%Y %H:%M', title='Time'),
-                    alt.Tooltip('Team', title='Team Name'),
-                    alt.Tooltip('Total XP', title='XP Balance')
-                ]
+        if not chart_df.empty:
+            chart = alt.Chart(chart_df).mark_bar().encode(
+                # :N = Nominal (ชื่อ), :Q = Quantitative (ตัวเลข) -> ใส่ Type ให้ชัดเจน
+                x=alt.X('Team:N', sort='-y', title='Team Name'),
+                y=alt.Y('XP:Q', title='Total XP'),
+                color=alt.Color('XP:Q', scale={'scheme': 'viridis'}, legend=None),
+                tooltip=['Team', 'XP']
             ).properties(
-                height=450
-            ).interactive()
-            
+                use_container_width=True,
+                height=400
+            )
             st.altair_chart(chart, use_container_width=True)
         else:
-            st.info("Not enough history data to generate timeline chart.")
+            st.info("No valid data to display chart.")
 
     def _render_privileges_tab(self):
         st.header("ℹ️ Rank & Privilege System")
