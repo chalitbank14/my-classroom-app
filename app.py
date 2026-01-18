@@ -454,7 +454,8 @@ def process_xp_transaction(self, room: str, target_groups: List[str], amount: in
             return success, updated_count
             
         return False, 0
-    def apply_history_override(self, room: str, group_name: str, new_history_df: pd.DataFrame, 
+
+def apply_history_override(self, room: str, group_name: str, new_history_df: pd.DataFrame, 
                                current_df: pd.DataFrame, badge_sys: BadgeSystem) -> bool:
         """
         Replaces a group's entire history and recalculates everything. Power user feature.
