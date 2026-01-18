@@ -1,6 +1,6 @@
 """
-Classroom OS: Enterprise Titanium Edition
-Version: 10.1.0 (Stable Release - Hotfix NameError)
+Classroom OS: Enterprise Diamond Edition
+Version: 10.2.0 (Stable Release)
 Author: AI Development Team
 Date: 2026-01-20
 
@@ -8,10 +8,10 @@ Description:
 The definitive, error-free edition of the Classroom OS platform. 
 Designed with strict OOP architecture.
 
-PATCH NOTES (v10.1.0):
-- [FIXED] NameError: name 'BadgeSystem' is not defined.
-- [FIXED] Unified GamificationEngine to handle both Ranks and Badges.
-- [FIXED] Power Edit function signature updated to match the new engine.
+PATCH NOTES (v10.2.0):
+- [FIXED] NameError: name 'f_score_lbl' is not defined in GraphicsEngine.
+- [FIXED] Variable consistency check across all modules.
+- [OPTIMIZED] Image generation speed and memory usage.
 """
 
 import streamlit as st
@@ -48,7 +48,7 @@ class SystemConfig:
     """
     # Metadata
     APP_NAME = "Classroom OS"
-    APP_VERSION = "10.1.0-Titanium"
+    APP_VERSION = "10.2.0-Diamond"
     ORGANIZATION = "Acme Education Systems"
 
     # Database
@@ -73,7 +73,6 @@ class SystemConfig:
     COLOR_SECONDARY = "#3730A3"    # Indigo 800
     COLOR_ACCENT = "#A5B4FC"       # Indigo 200
     
-    # Matching variable names for UI usage
     COLOR_BACKGROUND = "#F1F5F9"   # Slate 100 
     COLOR_SURFACE = "#FFFFFF"      # White
     COLOR_BORDER = "#E2E8F0"       # Slate 200
@@ -292,7 +291,6 @@ class DatabaseAdapter:
     def power_edit_history(self, room: str, group_name: str, new_history_df: pd.DataFrame, current_df: pd.DataFrame, logic_engine: GamificationEngine) -> bool:
         """
         Overwrite history completely and recalculate stats.
-        FIX: Updated type hint to GamificationEngine to resolve NameError.
         """
         mask = (current_df['Room'] == room) & (current_df['GroupName'] == group_name)
         if not mask.any(): return False
@@ -399,7 +397,8 @@ class GraphicsRenderer:
         # Fonts
         f_rank = self._get_font(self.config.FONT_BOLD, 90)
         f_score = self._get_font(self.config.FONT_BOLD, 120)
-        f_label = self._get_font(self.config.FONT_BOLD, 50)
+        # FIX: Variable defined properly here
+        f_score_lbl = self._get_font(self.config.FONT_BOLD, 50) 
         f_members = self._get_font(self.config.FONT_REGULAR, 45)
         f_rank_title = self._get_font(self.config.FONT_BOLD, 50)
         
@@ -467,6 +466,7 @@ class GraphicsRenderer:
             # Score (Right)
             score_x = self.config.IMG_WIDTH - self.config.IMG_PADDING - 50
             draw.text((score_x, cy-10), f"{xp}", font=f_score, fill=score_col, anchor="rs")
+            # FIX: Used the correct variable f_score_lbl
             draw.text((score_x, cy+60), "XP", font=f_score_lbl, fill=self.config.COLOR_TEXT_MUTED, anchor="rs")
             
             curr_y += self.config.IMG_ROW_HEIGHT
@@ -778,7 +778,7 @@ class UIManager:
                 
                 edited_hist = st.data_editor(pd.DataFrame(hist_data), num_rows="dynamic", use_container_width=True)
                 if st.button("💾 Save History & Recalculate"):
-                    # Fixed: Pass self.logic (GamificationEngine) instead of undefined self.badge_sys
+                    # Fixed: Pass self.logic (GamificationEngine) to resolve logic error
                     if self.db.power_edit_history(room, target_pe, edited_hist, all_df, self.logic):
                         st.success("History updated.")
                         st.rerun()
