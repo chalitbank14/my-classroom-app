@@ -151,13 +151,14 @@ class RankManager:
     def __init__(self):
         # Define the hierarchy of ranks, ordered from highest to lowest XP.
         # IMPORTANT: Ensure Thai descriptions are concise for UI fit.
+        # แก้ไข: ลบ Emoji ออกจากชื่อยศภาษาไทย เพื่อแก้ปัญหากรอบสี่เหลี่ยม
         self._ranks: List[RankDefinition] = [
-            RankDefinition("PRESIDENT", "👑 ประธานรุ่น", 1000, "#F59E0B", "#FEF3C7", "Immunity (ไม่ทำ 3 งาน) + Bonus 1/งาน"),
-            RankDefinition("DIRECTOR", "💼 หัวหน้าฝ่าย", 600, "#8B5CF6", "#F3E8FF", "Workload Cut (ลดภาระงาน 50%)"),
-            RankDefinition("MANAGER", "👔 หัวหน้าแผนก", 300, "#3B82F6", "#DBEAFE", "Second Chance (แก้ตัวได้ 1 ครั้ง/หน่วย)"),
-            RankDefinition("EMPLOYEE", "👨‍💼 พนักงาน", 100, "#10B981", "#D1FAE5", "Time Extension (ส่งช้าได้ 2 สัปดาห์)"),
-            RankDefinition("INTERN", "👶 เด็กฝึกงาน", 0, "#64748B", "#F1F5F9", "Check-up (สิทธิ์ให้ครูตรวจงานก่อนส่ง)"),
-            RankDefinition("PROBATION", "⚠️ ทัณฑ์บน", -999999, "#EF4444", "#FEE2E2", "สถานะวิกฤต! รีบซ่อมคะแนนด่วน")
+            RankDefinition("PRESIDENT", "ประธานรุ่น", 1000, "#F59E0B", "#FEF3C7", "Immunity (ไม่ทำ 3 งาน) + Bonus 1/งาน"),
+            RankDefinition("DIRECTOR", "หัวหน้าฝ่าย", 600, "#8B5CF6", "#F3E8FF", "Workload Cut (ลดภาระงาน 50%)"),
+            RankDefinition("MANAGER", "หัวหน้าแผนก", 300, "#3B82F6", "#DBEAFE", "Second Chance (แก้ตัวได้ 1 ครั้ง/หน่วย)"),
+            RankDefinition("EMPLOYEE", "พนักงาน", 100, "#10B981", "#D1FAE5", "Time Extension (ส่งช้าได้ 2 สัปดาห์)"),
+            RankDefinition("INTERN", "เด็กฝึกงาน", 0, "#64748B", "#F1F5F9", "Check-up (สิทธิ์ให้ครูตรวจงานก่อนส่ง)"),
+            RankDefinition("PROBATION", "ทัณฑ์บน", -999999, "#EF4444", "#FEE2E2", "สถานะวิกฤต! รีบซ่อมคะแนนด่วน")
         ]
         self._probation_rank = self._ranks[-1]
         self._default_rank = self._ranks[-2] # Intern
@@ -576,23 +577,30 @@ class GraphicsEngine:
 
 # [ADD THIS] เพิ่มฟังก์ชันนี้ลงใน Class GraphicsEngine
     def _draw_vector_medal(self, draw: ImageDraw.Draw, x: int, y: int, color_hex: str, rank_idx: int):
-        """วาดสติกเกอร์เหรียญรางวัลแบบ Vector (แก้ปัญหากล่องสี่เหลี่ยม)"""
-        # 1. ริบบิ้น (Ribbon V-Shape)
+        """
+        วาดเหรียญรางวัลแบบ Vector (แก้ไขปัญหากรอบขาวบัง)
+        ใช้วิธีวาดรูปทรงเรขาคณิตซ้อนกัน เพื่อความคมชัดและไม่มีปัญหาเรื่องฟอนต์หรือรูปภาพ
+        """
+        # 1. ริบบิ้น (Ribbon) - วาดเป็นรูปห้าเหลี่ยมสีแดงอยู่ด้านหลังสุด
         ribbon_color = "#EF4444"
         draw.polygon([
-            (x - 20, y - 90), (x - 20, y - 50), (x, y - 20), (x + 20, y - 50), (x + 20, y - 90)
+            (x - 20, y - 90), # จุดบนซ้าย
+            (x - 20, y - 40), # จุดล่างซ้าย (ตรงคอคอด)
+            (x, y - 10),      # จุดล่างสุดตรงกลาง
+            (x + 20, y - 40), # จุดล่างขวา (ตรงคอคอด)
+            (x + 20, y - 90)  # จุดบนขวา
         ], fill=ribbon_color)
         
-        # 2. ขอบเหรียญ (White Border)
+        # 2. ตัวเหรียญ (Medal Body) - วาดทับริบบิ้น
+        # 2.1 ขอบนอกสีขาว (Outer Ring)
         r_outer = 85
         draw.ellipse([(x - r_outer, y - r_outer), (x + r_outer, y + r_outer)], fill="#FFFFFF")
         
-        # 3. ตัวเหรียญ (Inner Body - Rank Color)
+        # 2.2 พื้นที่สีด้านใน (Inner Color Circle) - สีตามระดับยศ
         r_inner = 75
         draw.ellipse([(x - r_inner, y - r_inner), (x + r_inner, y + r_inner)], fill=color_hex)
         
-        # 4. เงาวาว (Gloss Effect) - ใช้ Chord วาดแสงสะท้อน
-        draw.chord([(x - r_inner, y - r_inner), (x + r_inner, y + r_inner)], 180, 360, fill="#FFFFFF40")
+        # (ผมเอา Gloss Effect เงาสีขาวโปร่งแสงออกไปก่อน เพื่อความชัวร์ว่าจะไม่เกิดปัญหากรอบขาวครับ)
 
     # [ADD THIS] เพิ่มฟังก์ชันนี้ลงใน Class GraphicsEngine
     def _draw_vector_trophy(self, draw: ImageDraw.Draw, cx: int, y: int):
@@ -750,7 +758,7 @@ class GraphicsEngine:
                 [(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + bar_width, Y_POS_PROGRESS_BAR + bar_height)],
                 radius=8, fill=self.cfg.COLOR_BACKGROUND
             )
-            
+
             # Draw fill based on progress
             if progress_pct > 0:
                 fill_width = int(bar_width * progress_pct)
