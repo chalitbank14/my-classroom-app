@@ -1,6 +1,6 @@
 """
-Classroom OS: Enterprise Diamond Edition
-Version: 10.2.0 (Stable Release)
+Classroom OS: Enterprise Titanium X Edition
+Version: 11.0.0 (Stable Release - Batch Optimization)
 Author: AI Development Team
 Date: 2026-01-20
 
@@ -8,10 +8,11 @@ Description:
 The definitive, error-free edition of the Classroom OS platform. 
 Designed with strict OOP architecture.
 
-PATCH NOTES (v10.2.0):
-- [FIXED] NameError: name 'f_score_lbl' is not defined in GraphicsEngine.
-- [FIXED] Variable consistency check across all modules.
-- [OPTIMIZED] Image generation speed and memory usage.
+PATCH NOTES (v11.0.0):
+- [FEATURE] Atomic Batch Processing: Score updates for multiple teams are now committed in a single transaction.
+- [FIXED] 'Batch Score Update' visibility and reliability issues.
+- [OPTIMIZED] Database write operations reduced by N-factor.
+- [UI] Added status indicators during batch operations.
 """
 
 import streamlit as st
@@ -48,7 +49,7 @@ class SystemConfig:
     """
     # Metadata
     APP_NAME = "Classroom OS"
-    APP_VERSION = "10.2.0-Diamond"
+    APP_VERSION = "11.0.0-TitaniumX"
     ORGANIZATION = "Acme Education Systems"
 
     # Database
@@ -202,6 +203,7 @@ class GamificationEngine:
 class DatabaseAdapter:
     """
     Handles all interactions with Google Sheets using a robust Schema Validator.
+    Features 'Atomic Batch Commits' for multi-group updates.
     """
     SCHEMA = ['Room', 'GroupName', 'XP', 'Members', 'LastUpdated', 'HistoryLog', 'Badges']
 
@@ -277,21 +279,56 @@ class DatabaseAdapter:
         mask = ~((current_df['Room'] == room) & (current_df['GroupName'] == name))
         return self.commit(current_df[mask])
 
-    def save_state(self, room: str, name: str, xp: int, hist: List[dict], badges: List[str], current_df: pd.DataFrame) -> bool:
-        mask = (current_df['Room'] == room) & (current_df['GroupName'] == name)
-        if not mask.any(): return False
+    def process_batch_transaction(self, room: str, target_groups: List[str], amount: int, reason: str, 
+                                  current_df: pd.DataFrame, logic_engine: GamificationEngine) -> int:
+        """
+        Processes transactions for multiple groups efficiently.
+        Updates the DataFrame in-memory first, then performs a SINGLE commit.
+        Returns the number of updated groups.
+        """
+        updated_count = 0
+        timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         
-        idx = current_df[mask].index[0]
-        current_df.at[idx, 'XP'] = xp
-        current_df.at[idx, 'HistoryLog'] = json.dumps(hist, ensure_ascii=False)
-        current_df.at[idx, 'Badges'] = json.dumps(badges, ensure_ascii=False)
-        current_df.at[idx, 'LastUpdated'] = datetime.now().strftime("%Y-%m-%d %H:%M")
-        return self.commit(current_df)
+        # Iterate and update in-memory
+        for group_name in target_groups:
+            mask = (current_df['Room'] == room) & (current_df['GroupName'] == group_name)
+            
+            if mask.any():
+                idx = current_df[mask].index[0]
+                
+                # Load History
+                try: 
+                    history_json = current_df.at[idx, 'HistoryLog']
+                    history = json.loads(history_json)
+                except: 
+                    history = []
+                
+                # Apply Logic (Calculate new XP, History, Badges)
+                new_xp, new_history, new_badges = logic_engine.process_transaction(
+                    current_df.at[idx, 'XP'], 
+                    history, 
+                    reason, 
+                    amount
+                )
+                
+                # Update DataFrame Row
+                current_df.at[idx, 'XP'] = new_xp
+                current_df.at[idx, 'HistoryLog'] = json.dumps(new_history, ensure_ascii=False)
+                current_df.at[idx, 'Badges'] = json.dumps(new_badges, ensure_ascii=False)
+                current_df.at[idx, 'LastUpdated'] = timestamp_str
+                
+                updated_count += 1
+        
+        # Commit ONLY if there were updates
+        if updated_count > 0:
+            if self.commit(current_df):
+                return updated_count
+            else:
+                return 0
+        return 0
 
     def power_edit_history(self, room: str, group_name: str, new_history_df: pd.DataFrame, current_df: pd.DataFrame, logic_engine: GamificationEngine) -> bool:
-        """
-        Overwrite history completely and recalculate stats.
-        """
+        """Overwrite history completely and recalculate stats."""
         mask = (current_df['Room'] == room) & (current_df['GroupName'] == group_name)
         if not mask.any(): return False
         
@@ -311,7 +348,6 @@ class DatabaseAdapter:
             
         final_xp = running_balance
         hist_sorted_desc = sorted(hist_sorted_asc, key=lambda x: x.get('ts', ''), reverse=True)
-        # Use logic_engine passed in args
         new_badges = logic_engine.calculate_badges(final_xp, hist_sorted_desc)
         
         current_df.at[idx, 'XP'] = final_xp
@@ -397,7 +433,6 @@ class GraphicsRenderer:
         # Fonts
         f_rank = self._get_font(self.config.FONT_BOLD, 90)
         f_score = self._get_font(self.config.FONT_BOLD, 120)
-        # FIX: Variable defined properly here
         f_score_lbl = self._get_font(self.config.FONT_BOLD, 50) 
         f_members = self._get_font(self.config.FONT_REGULAR, 45)
         f_rank_title = self._get_font(self.config.FONT_BOLD, 50)
@@ -466,7 +501,6 @@ class GraphicsRenderer:
             # Score (Right)
             score_x = self.config.IMG_WIDTH - self.config.IMG_PADDING - 50
             draw.text((score_x, cy-10), f"{xp}", font=f_score, fill=score_col, anchor="rs")
-            # FIX: Used the correct variable f_score_lbl
             draw.text((score_x, cy+60), "XP", font=f_score_lbl, fill=self.config.COLOR_TEXT_MUTED, anchor="rs")
             
             curr_y += self.config.IMG_ROW_HEIGHT
@@ -582,35 +616,32 @@ class UIManager:
             st.info("No teams found. Please create one in the Management tab.")
             return
 
-        targets = st.multiselect("Select Target Teams", sorted(room_df['GroupName'].unique()))
+        # Target Selection with Batch Logic
+        targets = st.multiselect("Select Target Teams (Single or Batch)", sorted(room_df['GroupName'].unique()))
         
         st.divider()
         c1, c2 = st.columns(2)
         
-        # Action Handler
+        # Action Handler (Atomic Batch)
         def _apply(reason, amt):
             if not targets:
                 st.error("Please select at least one team.")
                 return
             
-            count = 0
-            for t in targets:
-                # Get current state
-                row = room_df[room_df['GroupName'] == t].iloc[0]
-                try: hist = json.loads(row['HistoryLog'])
-                except: hist = []
+            # Show status container for better UX
+            with st.status("Processing Batch Updates...", expanded=True) as status:
+                st.write("Calculations in progress...")
                 
-                # Logic
-                new_xp, new_hist, new_badges = self.logic.process_transaction(row['XP'], hist, reason, amt)
+                # Perform Atomic Batch Update
+                count = self.db.process_batch_transaction(room, targets, amt, reason, all_df, self.logic)
                 
-                # Save
-                if self.db.save_state(room, t, new_xp, new_hist, new_badges, all_df):
-                    count += 1
-            
-            if count > 0:
-                st.toast(f"Successfully updated {count} teams!", icon="✅")
-                time.sleep(1)
-                st.rerun()
+                if count > 0:
+                    status.update(label=f"Successfully updated {count} teams!", state="complete", expanded=False)
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    status.update(label="Transaction Failed", state="error")
+                    st.error("Database commit failed.")
 
         with c1:
             st.subheader("Quick Actions")
@@ -778,7 +809,7 @@ class UIManager:
                 
                 edited_hist = st.data_editor(pd.DataFrame(hist_data), num_rows="dynamic", use_container_width=True)
                 if st.button("💾 Save History & Recalculate"):
-                    # Fixed: Pass self.logic (GamificationEngine) to resolve logic error
+                    # Fixed: Pass self.logic (GamificationEngine) instead of undefined self.badge_sys
                     if self.db.power_edit_history(room, target_pe, edited_hist, all_df, self.logic):
                         st.success("History updated.")
                         st.rerun()
