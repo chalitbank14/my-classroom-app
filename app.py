@@ -519,7 +519,6 @@ class GraphicsEngine:
                 self._font_cache[key] = font
             except IOError as e:
                 logger.error(f"Could not load font '{name}'. Falling back to default. Error: {e}")
-                # Fallback can result in ugly text, but prevents crash
                 font = ImageFont.load_default()
                 self._font_cache[key] = font
         return self._font_cache[key]
@@ -532,7 +531,6 @@ class GraphicsEngine:
         """
         if not isinstance(text, str): return ""
         # Blocklist of problematic emoji ranges/characters
-        # Note: Standard text & Thai characters are allowed.
         problematic_chars = ["👑", "💼", "👔", "👨‍💼", "👶", "⚠️", "🩸", "💎", "💸", "🎯", "🔥", "🏆"]
         cleaned = text
         for char in problematic_chars:
@@ -557,31 +555,28 @@ class GraphicsEngine:
         
         # Iteratively reduce size until it fits
         while current_size > min_size:
-            # getlength is efficient for checking width
             if font.getlength(text) <= max_width:
                 break
             current_size -= 4 # Step down size
             font = self._get_font(font_name, current_size)
             
         # Final draw with fitted font
-        # Using 'lt' anchor means (x, y) is the top-left corner of the text bounding box.
-        # This is crucial for predictable stacking of Thai text.
         draw.text((x, y), text, font=font, fill=color, anchor=anchor)
 
-def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manager: RankManager) -> bytes:
+    # ฟังก์ชันนี้คือตัวที่ Error แจ้งว่าหาไม่เจอครับ (ใส่กลับมาให้แล้ว)
+    def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manager: RankManager) -> bytes:
         """
         Orchestrates the entire image generation process.
         Uses explicit vertical spacing to solve Thai typography overlaps.
         """
         logger.info(f"Starting image generation for room: {room_name}")
-        start_time = time.time()
-
-        # 1. Prepare Data (Sort and Filter)
+        
+        # 1. Prepare Data
         leaderboard_data = df.sort_values("XP", ascending=False).reset_index(drop=True)
         
         # 2. Calculate Canvas Dimensions
         total_rows = len(leaderboard_data)
-        # FIX: Define canvas_height clearly
+        # คำนวณความสูงรวมของภาพ
         canvas_height = (
             self.cfg.IMG_HEADER_HEIGHT + 
             (total_rows * self.cfg.IMG_ROW_HEIGHT) + 
@@ -592,9 +587,7 @@ def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manage
         img = Image.new('RGBA', (self.cfg.IMG_WIDTH, canvas_height), color=self.cfg.COLOR_BG_MAIN)
         draw = ImageDraw.Draw(img)
         
-        # ==========================================================================
-        # HEADER SECTION Rendering
-        # ==========================================================================
+        # --- HEADER ---
         draw.rectangle([(0, 0), (self.cfg.IMG_WIDTH, self.cfg.IMG_HEADER_HEIGHT)], fill=self.cfg.COLOR_BRAND_PRIMARY)
         draw.ellipse([(900, -150), (1500, 450)], fill=self.cfg.COLOR_BRAND_SECONDARY)
         draw.ellipse([(-100, 250), (500, 850)], fill=self.cfg.COLOR_BRAND_SECONDARY)
@@ -610,11 +603,10 @@ def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manage
         f_room = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 150)
         draw.text((center_x, 550), room_name, font=f_room, fill="white", anchor="mm")
 
-        # ==========================================================================
-        # LEADERBOARD ROWS Rendering
-        # ==========================================================================
+        # --- ROWS ---
         current_y_cursor = self.cfg.IMG_HEADER_HEIGHT + 50
         
+        # Pre-fetch fonts
         f_rank_num = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 85)
         f_score_val = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 110)
         f_score_lbl = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 45)
@@ -632,13 +624,14 @@ def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manage
             rank_color_hex = theme["hex"]
             score_color = self.cfg.COLOR_SCORE_NEGATIVE if xp < 0 else self.cfg.COLOR_SCORE_POSITIVE
 
+            # Layout
             card_x_start = self.cfg.IMG_PADDING_X
             card_width = self.cfg.IMG_WIDTH - (self.cfg.IMG_PADDING_X * 2)
             card_height = self.cfg.IMG_ROW_HEIGHT - 40 
             card_y_start = current_y_cursor
             card_y_end = card_y_start + card_height
             
-            # Card Body & Shadow
+            # Card Body
             draw.rounded_rectangle([(card_x_start + 8, card_y_start + 10), (card_x_start + card_width + 8, card_y_end + 10)], radius=self.cfg.IMG_CARD_RADIUS, fill=self.cfg.COLOR_CARD_SHADOW)
             draw.rounded_rectangle([(card_x_start, card_y_start), (card_x_start + card_width, card_y_end)], radius=self.cfg.IMG_CARD_RADIUS, fill=self.cfg.COLOR_CARD_SURFACE)
 
@@ -648,10 +641,11 @@ def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manage
             draw.ellipse([(circle_center_x - 75, circle_center_y - 75), (circle_center_x + 75, circle_center_y + 75)], fill=rank_color_hex)
             draw.text((circle_center_x, circle_center_y), str(i + 1), font=f_rank_num, fill="white", anchor="mm")
 
-            # Col 2: Info (Explicit Spacing)
+            # Col 2: Content (Explicit Spacing)
             content_x_start = card_x_start + 260
             content_max_width = 650
             
+            # Y-Grid System (ระยะห่างสำหรับภาษาไทย)
             Y_POS_NAME = card_y_start + 60
             Y_POS_MEMBERS = Y_POS_NAME + 75
             Y_POS_PROGRESS_BAR = Y_POS_MEMBERS + 60
@@ -665,15 +659,17 @@ def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manage
             if len(members_txt) > 65: members_txt = members_txt[:62] + "..."
             draw.text((content_x_start, Y_POS_MEMBERS), members_txt, font=f_members, fill=self.cfg.COLOR_TEXT_SECONDARY, anchor="lt")
 
-            # Progress Bar
-            bar_w = 580
-            draw.rounded_rectangle([(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + bar_w, Y_POS_PROGRESS_BAR + 16)], radius=8, fill=self.cfg.COLOR_BG_MAIN)
+            # Bar
+            bar_width = 580
+            draw.rounded_rectangle([(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + bar_width, Y_POS_PROGRESS_BAR + 16)], radius=8, fill=self.cfg.COLOR_BG_MAIN)
             if progress_pct > 0:
-                fill_w = max(int(bar_w * progress_pct), 20) if progress_pct > 0.01 else int(bar_w * progress_pct)
-                draw.rounded_rectangle([(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + fill_w, Y_POS_PROGRESS_BAR + 16)], radius=8, fill=rank_def.color)
+                fill_width = max(int(bar_width * progress_pct), 20) if progress_pct > 0.01 else int(bar_width * progress_pct)
+                draw.rounded_rectangle([(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + fill_width, Y_POS_PROGRESS_BAR + 16)], radius=8, fill=rank_def.color)
 
-            # Rank & Privilege
+            # Rank Title & Privilege
             draw.text((content_x_start, Y_POS_RANK_TITLE), rank_def.th_name, font=f_rank_title, fill=rank_def.color, anchor="lt")
+            
+            # Privilege Description
             self._draw_text_with_autofit(draw, rank_def.description, content_x_start, Y_POS_PRIVILEGE, content_max_width, self.cfg.FONT_PRIMARY_REG, 40, self.cfg.COLOR_TEXT_SECONDARY, anchor="lt")
 
             # Col 3: Score
@@ -684,16 +680,11 @@ def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manage
 
             current_y_cursor += self.cfg.IMG_ROW_HEIGHT
 
-        # ==========================================================================
-        # FOOTER SECTION Rendering
-        # ==========================================================================
-        # FIX: Use canvas_height variable
+        # --- FOOTER ---
         footer_y_center = canvas_height - (self.cfg.IMG_FOOTER_HEIGHT // 2)
         f_footer = self._get_font(self.cfg.FONT_PRIMARY_REG, 38)
         timestamp_str = datetime.now().strftime('%d/%m/%Y %H:%M')
-        footer_text = f"Generated by {self.cfg.APP_NAME} • {timestamp_str}"
-        
-        draw.text((self.cfg.IMG_WIDTH // 2, footer_y_center), footer_text, font=f_footer, fill=self.cfg.COLOR_TEXT_MUTED, anchor="mm")
+        draw.text((self.cfg.IMG_WIDTH // 2, footer_y_center), f"Generated by {self.cfg.APP_NAME} • {timestamp_str}", font=f_footer, fill=self.cfg.COLOR_TEXT_MUTED, anchor="mm")
 
         img_final = img.convert('RGB')
         buf = io.BytesIO()
