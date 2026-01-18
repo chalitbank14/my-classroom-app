@@ -262,7 +262,8 @@ class DatabaseAdapter:
         }
         return self.commit(pd.concat([current_df, pd.DataFrame([new_row])], ignore_index=True))
 
-    def update_team(self, room: str, old_name: str, new_name: str, members: str, current_df: pd.DataFrame) -> bool:
+def update_team(self, room, old_name, new_name, members, current_df):
+        # เช็คชื่อซ้ำกรณีเปลี่ยนชื่อ
         if new_name != old_name:
             if ((current_df['Room'] == room) & (current_df['GroupName'] == new_name)).any(): return False
             
@@ -368,8 +369,8 @@ class GraphicsRenderer:
     Feature: Emoji Cleaning.
     Feature: Auto-fit text.
     """
-    def __init__(self):
-        self.config = SystemConfig()
+def __init__(self):
+        self.cfg = SystemConfig()
         self._font_cache = {}
 
     def _get_font(self, name: str, size: int) -> ImageFont.FreeTypeFont:
@@ -377,20 +378,29 @@ class GraphicsRenderer:
         if key not in self._font_cache:
             try:
                 self._font_cache[key] = ImageFont.truetype(name, size)
-            except IOError:
-                logger.warning(f"Font {name} not found. Using default.")
+            except:
                 self._font_cache[key] = ImageFont.load_default()
         return self._font_cache[key]
 
     def _clean_text(self, text: str) -> str:
-        """Removes artifacts, keeps Thai/English."""
+        """ลบ Emoji ออกเพื่อกันเป็นกล่องสี่เหลี่ยม"""
         if not isinstance(text, str): return ""
         return re.sub(r'[^\w\s\u0E00-\u0E7F().,-]', '', text).strip()
+
+    def _draw_sticker_medal(self, draw, x, y, color_hex, rank_num):
+        """วาดสติกเกอร์เหรียญรางวัลแบบ Vector (แก้ปัญหากล่องสี่เหลี่ยม)"""
+        # ริบบิ้น
+        draw.polygon([(x-20, y-80), (x+20, y-80), (x, y-40)], fill="#EF4444")
+        # ขอบสติกเกอร์สีขาว
+        draw.ellipse([(x-85, y-85), (x+85, y+85)], fill="#FFFFFF")
+        # ตัวเหรียญ
+        draw.ellipse([(x-75, y-75), (x+75, y+75)], fill=color_hex)
+        # เงาวาว
+        draw.chord([(x-75, y-75), (x+75, y+75)], 180, 360, fill="#FFFFFF40")
 
     def _draw_text_autofit(self, draw, text, x, y, max_w, font_name, max_s, color, anchor="lt"):
         text = self._clean_text(text)
         if not text: return
-        
         size = max_s
         font = self._get_font(font_name, size)
         while size > 24:
@@ -402,119 +412,103 @@ class GraphicsRenderer:
     def generate_leaderboard(self, room_name: str, df: pd.DataFrame, logic: GamificationEngine) -> bytes:
         data = df.sort_values("XP", ascending=False).reset_index(drop=True)
         
-        # Height Calculation
-        canvas_height = (
-            self.config.IMG_HEADER_HEIGHT + 
-            (len(data) * self.config.IMG_ROW_HEIGHT) + 
-            self.config.IMG_FOOTER_HEIGHT
-        )
+        # คำนวณความสูง canvas
+        # ใช้ IMG_ROW_HEIGHT = 620 เพื่อกันสระลอยทับกัน
+        row_height = 620
+        canvas_h = self.cfg.IMG_HEADER_HEIGHT + (len(data) * row_height) + self.cfg.IMG_FOOTER_HEIGHT
         
-        img = Image.new('RGBA', (self.config.IMG_WIDTH, canvas_height), self.config.COLOR_BACKGROUND)
+        img = Image.new('RGBA', (self.cfg.IMG_WIDTH, canvas_h), self.cfg.COLOR_BACKGROUND)
         draw = ImageDraw.Draw(img)
         
         # --- HEADER ---
-        draw.rectangle([(0, 0), (self.config.IMG_WIDTH, self.config.IMG_HEADER_HEIGHT)], fill=self.config.COLOR_PRIMARY)
-        draw.ellipse([(900, -150), (1500, 450)], fill=self.config.COLOR_SECONDARY)
-        draw.ellipse([(-100, 250), (500, 850)], fill=self.config.COLOR_SECONDARY)
+        draw.rectangle([(0, 0), (self.cfg.IMG_WIDTH, self.cfg.IMG_HEADER_HEIGHT)], fill=self.cfg.COLOR_PRIMARY)
+        cx = self.cfg.IMG_WIDTH // 2
         
-        cx = self.config.IMG_WIDTH // 2
-        f_icon = self._get_font(self.config.FONT_REGULAR, 200)
-        draw.text((cx, 220), "🏆", font=f_icon, fill="white", anchor="mm")
+        # วาดถ้วยรางวัล (Vector)
+        draw.polygon([(cx-60, 180), (cx+60, 180), (cx+30, 280), (cx-30, 280)], fill="#FFD700")
+        draw.ellipse([(cx-60, 170), (cx+60, 190)], fill="#FFC107")
         
-        f_title = self._get_font(self.config.FONT_BOLD, 70)
-        draw.text((cx, 400), "CLASSROOM LEADERBOARD", font=f_title, fill=self.config.COLOR_ACCENT, anchor="mm")
-        
-        f_room = self._get_font(self.config.FONT_BOLD, 160)
+        f_title = self._get_font(self.cfg.FONT_BOLD, 70)
+        draw.text((cx, 400), "CLASSROOM LEADERBOARD", font=f_title, fill=self.cfg.COLOR_ACCENT, anchor="mm")
+        f_room = self._get_font(self.cfg.FONT_BOLD, 160)
         draw.text((cx, 600), room_name, font=f_room, fill="white", anchor="mm")
         
         # --- ROWS ---
-        curr_y = self.config.IMG_HEADER_HEIGHT + 50
+        curr_y = self.cfg.IMG_HEADER_HEIGHT + 50
         
         # Fonts
-        f_rank = self._get_font(self.config.FONT_BOLD, 90)
-        f_score = self._get_font(self.config.FONT_BOLD, 120)
-        f_score_lbl = self._get_font(self.config.FONT_BOLD, 50) 
-        f_members = self._get_font(self.config.FONT_REGULAR, 45)
-        f_rank_title = self._get_font(self.config.FONT_BOLD, 50)
+        f_rank = self._get_font(self.cfg.FONT_BOLD, 90)
+        f_score = self._get_font(self.cfg.FONT_BOLD, 120)
+        f_lbl = self._get_font(self.cfg.FONT_BOLD, 50)
+        f_mem = self._get_font(self.cfg.FONT_REGULAR, 45)
+        f_ttl = self._get_font(self.cfg.FONT_BOLD, 50)
         
         for i, row in data.iterrows():
             xp = row['XP']
             rank = logic.get_rank(xp)
             pct, _ = logic.get_progress(xp)
-            
-            theme = self.config.RANK_THEMES.get(i if i < 3 else "default")
-            score_col = self.config.COLOR_DANGER if xp < 0 else self.config.COLOR_SUCCESS
-            
-            # Dimensions
-            card_x = self.config.IMG_PADDING
-            card_w = self.config.IMG_WIDTH - (self.config.IMG_PADDING * 2)
-            card_h = self.config.IMG_ROW_HEIGHT - 40
+            theme = self.cfg.RANK_THEMES.get(i if i < 3 else "default")
             
             # Card Body
-            draw.rounded_rectangle(
-                [(card_x+10, curr_y+10), (card_x+card_w+10, curr_y+card_h+10)], 
-                radius=self.config.IMG_CARD_RADIUS, fill=self.config.COLOR_SHADOW
-            )
-            draw.rounded_rectangle(
-                [(card_x, curr_y), (card_x+card_w, curr_y+card_h)], 
-                radius=self.config.IMG_CARD_RADIUS, fill=self.config.COLOR_SURFACE
-            )
+            cx_card = self.cfg.IMG_PADDING
+            cw = self.cfg.IMG_WIDTH - (self.cfg.IMG_PADDING * 2)
+            ch = row_height - 40
             
-            # Rank Circle
-            cy = curr_y + (card_h // 2)
-            cx_circle = card_x + 120
-            draw.ellipse([(cx_circle-80, cy-80), (cx_circle+80, cy+80)], fill=theme['hex'])
-            draw.text((cx_circle, cy), str(i+1), font=f_rank, fill="white", anchor="mm")
+            draw.rounded_rectangle([(cx_card, curr_y), (cx_card+cw, curr_y+ch)], radius=40, fill=self.cfg.COLOR_SURFACE)
             
-            # Content (Explicit Grid)
-            content_x = card_x + 280
-            content_w = 620
+            # วาดสติกเกอร์ (Sticker)
+            cx_sticker = cx_card + 120
+            cy_sticker = curr_y + (ch // 2)
+            if i < 3:
+                self._draw_sticker_medal(draw, cx_sticker, cy_sticker, theme['hex'], i+1)
+            else:
+                draw.ellipse([(cx_sticker-80, cy_sticker-80), (cx_sticker+80, cy_sticker+80)], fill="#FFFFFF")
+                draw.ellipse([(cx_sticker-70, cy_sticker-70), (cx_sticker+70, cy_sticker+70)], fill=theme['hex'])
             
-            # Spacing Calculation (Generous for Thai)
-            Y_NAME = curr_y + 60
-            Y_MEMBERS = Y_NAME + 100
-            Y_BAR = Y_MEMBERS + 90
-            Y_TITLE = Y_BAR + 70
-            Y_DESC = Y_TITLE + 70
+            draw.text((cx_sticker, cy_sticker), str(i+1), font=f_rank, fill="white", anchor="mm")
             
-            # 1. Group Name
-            self._draw_text_autofit(draw, str(row['GroupName']), content_x, Y_NAME, content_w, self.config.FONT_BOLD, 90, self.config.COLOR_TEXT_MAIN, "lt")
+            # --- เนื้อหา (จัด Grid ใหม่ไม่ให้ทับกัน) ---
+            info_x = cx_card + 280
+            info_w = 600
             
-            # 2. Members (Cleaned & Truncated)
+            # ระยะห่างแนวตั้ง (สำคัญมากสำหรับภาษาไทย)
+            Y1 = curr_y + 50   # ชื่อกลุ่ม
+            Y2 = Y1 + 100      # สมาชิก
+            Y3 = Y2 + 100      # หลอดพลัง
+            Y4 = Y3 + 70       # ชื่อยศ
+            Y5 = Y4 + 70       # สิทธิพิเศษ
+            
+            self._draw_text_autofit(draw, str(row['GroupName']), info_x, Y1, info_w, self.cfg.FONT_BOLD, 90, self.cfg.COLOR_TEXT_MAIN)
+            
             mem_text = self._clean_text(str(row['Members']))
-            if len(mem_text) > 55: mem_text = mem_text[:52] + "..."
-            draw.text((content_x, Y_MEMBERS), mem_text, font=f_members, fill=self.config.COLOR_TEXT_SUB, anchor="lt")
+            draw.text((info_x, Y2), mem_text[:60]+"...", font=f_mem, fill=self.cfg.COLOR_TEXT_SUB, anchor="lt")
             
-            # 3. Bar
-            draw.rounded_rectangle([(content_x, Y_BAR), (content_x+580, Y_BAR+16)], radius=8, fill=self.config.COLOR_BACKGROUND)
+            # Progress Bar
+            draw.rounded_rectangle([(info_x, Y3), (info_x+580, Y3+16)], radius=8, fill=self.cfg.COLOR_BACKGROUND)
             if pct > 0:
-                fill_w = max(int(580 * pct), 20)
-                draw.rounded_rectangle([(content_x, Y_BAR), (content_x+fill_w, Y_BAR+16)], radius=8, fill=rank.color)
+                fw = max(int(580*pct), 20)
+                draw.rounded_rectangle([(info_x, Y3), (info_x+fw, Y3+16)], radius=8, fill=rank.color)
             
-            # 4. Rank Title (Cleaned)
-            cln_title = self._clean_text(rank.th_name)
-            draw.text((content_x, Y_TITLE), cln_title, font=f_rank_title, fill=rank.color, anchor="lt")
+            # Rank Title
+            draw.text((info_x, Y4), self._clean_text(rank.th_name), font=f_ttl, fill=rank.color, anchor="lt")
             
-            # 5. Privilege
-            self._draw_text_autofit(draw, rank.desc, content_x, Y_DESC, content_w, self.config.FONT_REGULAR, 40, self.config.COLOR_TEXT_SUB, "lt")
+            # Privilege
+            self._draw_text_autofit(draw, rank.desc, info_x, Y5, info_w, self.cfg.FONT_REGULAR, 40, self.cfg.COLOR_TEXT_SUB)
             
-            # Score (Right)
-            score_x = self.config.IMG_WIDTH - self.config.IMG_PADDING - 50
-            draw.text((score_x, cy-10), f"{xp}", font=f_score, fill=score_col, anchor="rs")
-            draw.text((score_x, cy+60), "XP", font=f_score_lbl, fill=self.config.COLOR_TEXT_MUTED, anchor="rs")
+            # Score
+            sx = self.cfg.IMG_WIDTH - self.cfg.IMG_PADDING - 50
+            draw.text((sx, cy_sticker-10), f"{xp}", font=f_score, fill=self.cfg.COLOR_PRIMARY, anchor="rs")
+            draw.text((sx, cy_sticker+60), "XP", font=f_lbl, fill=self.cfg.COLOR_TEXT_MUTED, anchor="rs")
             
-            curr_y += self.config.IMG_ROW_HEIGHT
+            curr_y += row_height
             
         # Footer
-        foot_y = canvas_height - (self.config.IMG_FOOTER_HEIGHT // 2)
-        f_foot = self._get_font(self.config.FONT_REGULAR, 40)
-        ts = datetime.now().strftime('%d/%m/%Y %H:%M')
-        draw.text((self.config.IMG_WIDTH // 2, foot_y), f"Generated by {self.config.APP_NAME} • {ts}", font=f_foot, fill=self.config.COLOR_TEXT_MUTED, anchor="mm")
+        f_ft = self._get_font(self.cfg.FONT_REGULAR, 38)
+        draw.text((self.cfg.IMG_WIDTH//2, canvas_h - 100), f"Generated by Classroom OS", font=f_ft, fill="#94A3B8", anchor="mm")
         
-        # Out
         out = img.convert('RGB')
         buf = io.BytesIO()
-        out.save(buf, format='PNG', optimize=True)
+        out.save(buf, format='PNG')
         return buf.getvalue()
 
 # ==============================================================================
@@ -742,61 +736,48 @@ class UIManager:
             </div>
             """, unsafe_allow_html=True)
 
-    def _tab_management(self, room, room_df, all_df):
+def _tab_manage(self, room, room_df, all_df):
         st.header("🛠️ Management")
         
-        # 1. Create
+        # 1. สร้างทีมใหม่
         with st.expander("➕ Create New Team", expanded=True):
-            with st.form("create"):
+            with st.form("new_team"):
                 n = st.text_input("Team Name")
-                m = st.text_area("Members (Comma separated)")
-                if st.form_submit_button("Create Team", type="primary"):
-                    if n:
-                        if self.db.create_team(room, n, m, all_df):
-                            st.success("Team created.")
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error("Duplicate name.")
-                    else:
-                        st.error("Name required.")
+                m = st.text_area("Members")
+                if st.form_submit_button("Create") and n:
+                    if self.db.create_team(room, n, m, all_df): 
+                        st.success("Created!"); time.sleep(0.5); st.rerun()
+                    else: 
+                        st.error("Duplicate Name!")
 
         st.divider()
         
-        # 2. Update (Feature restored)
-        st.subheader("✏️ Edit Team Details")
-        st.caption("Rename teams or manage roster (move/add/remove members).")
-        
-        team_list = sorted(room_df['GroupName'].unique())
-        target = st.selectbox("Select Team to Edit", ["-"] + team_list)
+        # 2. แก้ไขทีม (กู้คืนส่วนนี้กลับมาให้แล้ว)
+        st.subheader("✏️ Edit Team (Rename / Move Members)")
+        t_list = sorted(room_df['GroupName'].unique())
+        target = st.selectbox("Select Team to Edit", ["-"] + t_list)
         
         if target != "-":
             curr = room_df[room_df['GroupName'] == target].iloc[0]
-            with st.form("edit"):
+            with st.form("edit_team"):
+                # ดึงข้อมูลเดิมมาใส่ให้แก้ไข
                 new_n = st.text_input("Team Name", value=curr['GroupName'])
-                new_m = st.text_area("Members List (Editable)", value=curr['Members'], height=150, help="Edit this text to move members in/out.")
+                new_m = st.text_area("Members (Edit to move/add/remove)", value=curr['Members'], height=150)
                 
-                c_save, c_del = st.columns([3, 1])
-                with c_save:
-                    if st.form_submit_button("💾 Save Changes", type="primary"):
-                        if self.db.update_team(room, target, new_n, new_m, all_df):
-                            st.success("Updated successfully.")
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error("Update failed.")
-                
-        # 3. Delete
+                if st.form_submit_button("💾 Save Changes", type="primary"):
+                    if self.db.update_team(room, target, new_n, new_m, all_df):
+                        st.success("Updated Successfully!")
+                        time.sleep(0.5); st.rerun()
+                    else:
+                        st.error("Update Failed (Name might be taken).")
+                    
         st.divider()
-        st.subheader("🗑️ Delete Team")
-        to_del = st.selectbox("Select Team to Delete", ["-"] + team_list, key="del_sel")
-        if to_del != "-":
-            st.warning(f"Permanently delete {to_del}?")
-            if st.button("Confirm Delete", type="primary"):
-                self.db.delete_team(room, to_del, all_df)
-                st.success("Deleted.")
-                time.sleep(1)
-                st.rerun()
+        
+        # 3. ลบทีม
+        delt = st.selectbox("Delete Team", ["-"] + t_list)
+        if delt != "-" and st.button("Confirm Delete"):
+            self.db.delete_team(room, delt, all_df)
+            st.rerun()
                 
         # 4. Power Edit (History)
         st.divider()
