@@ -116,7 +116,6 @@ st.markdown("""
 class RankSystem:
     """
     ระบบจัดการยศและสิทธิพิเศษ (Rank & Privilege System)
-    กำหนด Logic ของแต่ละยศ และสิทธิประโยชน์ที่จะได้รับ
     """
     def __init__(self):
         self.ranks = [
@@ -171,7 +170,6 @@ class RankSystem:
         ]
 
     def get_rank(self, xp):
-        """ค้นหายศจาก XP ปัจจุบัน"""
         if xp < 0: return self.ranks[-1] # Probation
         for rank in self.ranks:
             if rank['name'] != "PROBATION" and xp >= rank['min_xp']:
@@ -179,15 +177,12 @@ class RankSystem:
         return self.ranks[-2] # Default to Intern if something weird happens
 
     def get_progress(self, xp):
-        """คำนวณ Progress Bar สู่ยศถัดไป"""
         if xp < 0: return 0.0, "🔴 Warning: ติดลบ"
-        
         for i, rank in enumerate(self.ranks):
             if rank['name'] != "PROBATION" and xp >= rank['min_xp']:
-                if i > 0: # ถ้ายังไม่ใชยศสูงสุด (President คือ index 0)
+                if i > 0: 
                     next_rank = self.ranks[i-1]
                     target = next_rank['min_xp']
-                    # ป้องกันการหารด้วย 0
                     if target == 0: target = 100 
                     pct = min(1.0, xp / target)
                     return pct, f"{int(pct*100)}% to {next_rank['th']}"
@@ -208,7 +203,6 @@ class BadgeEngine:
         }
 
     def check(self, xp, hist):
-        """ตรวจสอบเงื่อนไขและคืนค่า List ของ Key เหรียญที่ได้รับ"""
         badges = []
         if xp >= 800: badges.append("wealthy")
         if xp < 0: badges.append("debtor")
@@ -217,7 +211,6 @@ class BadgeEngine:
         return list(set(badges))
 
     def render_icons(self, badge_list):
-        """แปลง List เหรียญเป็น String Emoji"""
         return "".join([self.catalog[b] for b in badge_list if b in self.catalog])
 
 # ==============================================================================
@@ -237,7 +230,6 @@ class DataManager:
             st.stop()
 
     def _sanitize_df(self, df):
-        """ทำความสะอาด Dataframe ป้องกัน Error ค่า Null"""
         if df.empty or not set(self.cols).issubset(df.columns):
             return pd.DataFrame(columns=self.cols)
         
@@ -248,7 +240,6 @@ class DataManager:
         return df
 
     def fetch(self):
-        """ดึงข้อมูลทั้งหมดจาก Sheet"""
         try:
             df = self.conn.read(worksheet="Sheet1", ttl=0)
             return self._sanitize_df(df)
@@ -256,7 +247,6 @@ class DataManager:
             return pd.DataFrame(columns=self.cols)
 
     def save(self, df):
-        """บันทึกข้อมูลลง Sheet และเคลียร์ Cache"""
         try:
             self.conn.update(worksheet="Sheet1", data=df)
             st.cache_data.clear()
@@ -266,8 +256,6 @@ class DataManager:
             return False
 
     def create_group(self, room, name, members, df):
-        """สร้างกลุ่มใหม่"""
-        # เช็คชื่อซ้ำในห้องเดียวกัน
         if ((df['Room'] == room) & (df['GroupName'] == name)).any():
             return False
         
@@ -283,8 +271,6 @@ class DataManager:
         return self.save(pd.concat([df, new_row], ignore_index=True))
 
     def edit_group(self, room, old_name, new_name, new_members, df):
-        """แก้ไขชื่อกลุ่มและสมาชิก"""
-        # ถ้าเปลี่ยนชื่อ ต้องเช็คว่าชื่อใหม่ซ้ำไหม
         if new_name != old_name and ((df['Room'] == room) & (df['GroupName'] == new_name)).any():
             return False
             
@@ -298,12 +284,10 @@ class DataManager:
         return False
 
     def delete_group(self, room, name, df):
-        """ลบกลุ่ม"""
         new_df = df[~((df['Room'] == room) & (df['GroupName'] == name))]
         return self.save(new_df)
 
     def update_xp(self, room, groups, amount, reason, df, badge_engine):
-        """อัปเดตคะแนน (รองรับหลายกลุ่มพร้อมกัน)"""
         if isinstance(groups, str): groups = [groups]
         updated_count = 0
         
@@ -311,12 +295,9 @@ class DataManager:
             idx = df[(df['Room'] == room) & (df['GroupName'] == grp)].index
             if not idx.empty:
                 i = idx[0]
-                
-                # Load History
                 try: hist = json.loads(df.at[i, 'HistoryLog'])
                 except: hist = []
                 
-                # Create Log Entry
                 new_entry = {
                     "id": str(uuid.uuid4())[:8],
                     "ts": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -324,12 +305,9 @@ class DataManager:
                     "amount": int(amount)
                 }
                 hist.insert(0, new_entry)
-                
-                # Recalculate Total
                 total = sum(x['amount'] for x in hist)
                 hist[0]['balance'] = total
                 
-                # Update DataFrame
                 df.at[i, 'XP'] = total
                 df.at[i, 'HistoryLog'] = json.dumps(hist, ensure_ascii=False)
                 df.at[i, 'Badges'] = json.dumps(badge_engine.check(total, hist), ensure_ascii=False)
@@ -341,23 +319,17 @@ class DataManager:
         return False, 0
 
     def advanced_edit_history(self, room, name, new_history_df, df, badge_engine):
-        """แก้ไขประวัติคะแนนแบบละเอียด (Power Edit)"""
         idx = df[(df['Room'] == room) & (df['GroupName'] == name)].index
         if not idx.empty:
             i = idx[0]
-            
-            # Convert DF back to List of Dicts
             hist_list = new_history_df.to_dict('records')
             
-            # Recalculate Balance Logic
-            # 1. Sort by Time Ascending to calc running balance
             hist_list_sorted = sorted(hist_list, key=lambda x: x['ts'])
             running_total = 0
             for h in hist_list_sorted:
                 running_total += int(h['amount'])
                 h['balance'] = running_total
                 
-            # 2. Sort back to Time Descending for storage
             final_hist = sorted(hist_list_sorted, key=lambda x: x['ts'], reverse=True)
             total_xp = running_total
             
@@ -368,13 +340,12 @@ class DataManager:
         return False
 
 # ==============================================================================
-# SECTION 4: IMAGE GENERATION ENGINE (The Robust Fix)
+# SECTION 4: IMAGE GENERATION ENGINE (Fixed: clean method)
 # ==============================================================================
 
 class LeaderboardGenerator:
     """
     คลาสสำหรับสร้างรูปภาพ Leaderboard โดยเฉพาะ
-    แก้ปัญหา Text Overlapping และการจัดวาง Layout
     """
     def __init__(self, width=1400, header_height=700, row_height=350, footer_height=150):
         self.W = width
@@ -390,7 +361,8 @@ class LeaderboardGenerator:
         self.COLOR_TEXT_MAIN = "#1E293B"
         self.COLOR_TEXT_SUB = "#64748B"
 
-    def clean_text(self, text):
+    # --- แก้ไขตรงนี้ครับ (เปลี่ยนชื่อจาก clean_text เป็น clean) ---
+    def clean(self, text):
         """ลบ Emoji ออกเพื่อป้องกัน Error สี่เหลี่ยม"""
         blocklist = ["👑", "💼", "👔", "👨‍💼", "👶", "⚠️", "🩸", "💎", "💸", "🎯", "🔥", "🏆"]
         for char in blocklist:
@@ -398,60 +370,44 @@ class LeaderboardGenerator:
         return text.strip()
 
     def load_font(self, font_name, size):
-        """โหลดฟอนต์พร้อมระบบ Fallback"""
         try:
             return ImageFont.truetype(font_name, size)
         except:
             return ImageFont.load_default()
 
     def draw_text_fit(self, draw, text, max_width, start_x, start_y, font_name, initial_size, color, anchor="ls"):
-        """
-        หัวใจสำคัญของการแก้ปัญหา Overlap:
-        ฟังก์ชันนี้จะลดขนาดฟอนต์ลงเรื่อยๆ จนกว่าข้อความจะพอดีกับ max_width
-        """
         font_size = initial_size
-        min_size = 40 # ขนาดเล็กสุดที่ยอมรับได้
+        min_size = 40 
         
         current_font = self.load_font(font_name, font_size)
         
-        # วนลูปตรวจสอบความกว้าง
         while font_size > min_size:
             text_width = current_font.getlength(text)
             if text_width <= max_width:
                 break
-            # ลดขนาดลง
             font_size -= 4
             current_font = self.load_font(font_name, font_size)
             
-        # วาดข้อความลงไป
         draw.text((start_x, start_y), text, font=current_font, fill=color, anchor=anchor)
-        return font_size # คืนค่าขนาดที่ใช้จริงเผื่อเอาไปใช้คำนวณต่อ
+        return font_size
 
     def generate(self, room_name, df, rank_sys):
         """Main Function ในการวาดภาพ"""
-        # เตรียมข้อมูล
         sorted_df = df.sort_values("XP", ascending=False).reset_index(drop=True)
         total_h = self.H_HEADER + (len(sorted_df) * self.H_ROW) + self.H_FOOTER
         
-        # สร้าง Canvas
         img = Image.new('RGB', (self.W, total_h), color=self.COLOR_BG)
         draw = ImageDraw.Draw(img)
         
         # --- 1. Draw Header ---
         draw.rectangle([(0, 0), (self.W, self.H_HEADER)], fill=self.COLOR_HEADER)
-        # Decorative Circles
         draw.ellipse([(1000, -100), (1600, 500)], fill='#4F46E5')
         draw.ellipse([(-100, 300), (400, 800)], fill='#3730A3')
         
-        # Header Texts (ใช้ตำแหน่ง Y ที่ห่างกันชัดเจน)
-        f_icon = self.load_font("Sarabun-Bold.ttf", 200)
         f_title = self.load_font("Sarabun-Bold.ttf", 65)
         f_room = self.load_font("Sarabun-Bold.ttf", 160)
         
-        draw.text((self.W//2, 200), "🏆", font=self.load_font("Sarabun-Regular.ttf", 200), fill='white', anchor="mm") # Emoji font fallback issue handled by PIL usually if simple, else use clean text
-        # หมายเหตุ: ถ้าใช้ PIL ธรรมดา emoji สีอาจไม่ขึ้น ให้ใช้ text "Award" แทน หรือทำใจเรื่องสี
-        # เพื่อความชัวร์ ใช้ Code วาดถ้วยรางวัล หรือใช้ Emoji ธรรมดา
-        
+        draw.text((self.W//2, 200), "🏆", font=self.load_font("Sarabun-Regular.ttf", 200), fill='white', anchor="mm")
         draw.text((self.W//2, 380), "CLASSROOM LEADERBOARD", font=f_title, fill='#A5B4FC', anchor="mm")
         draw.text((self.W//2, 580), f"{room_name}", font=f_room, fill='white', anchor="mm")
         
@@ -461,22 +417,19 @@ class LeaderboardGenerator:
         f_rank_num = self.load_font("Sarabun-Bold.ttf", 90)
         f_score_num = self.load_font("Sarabun-Bold.ttf", 110)
         f_small_label = self.load_font("Sarabun-Bold.ttf", 55)
-        f_privilege = self.load_font("Sarabun-Regular.ttf", 40)
         f_members = self.load_font("Sarabun-Regular.ttf", 48)
 
         for i, row in sorted_df.iterrows():
             rank_info = rank_sys.get_rank(row['XP'])
             pct, _ = rank_sys.get_progress(row['XP'])
             
-            # Determine Rank Color
-            if i == 0:   theme_col = "#F59E0B" # Gold
-            elif i == 1: theme_col = "#94A3B8" # Silver
-            elif i == 2: theme_col = "#B45309" # Bronze
-            else:        theme_col = "#64748B" # Gray
+            if i == 0:   theme_col = "#F59E0B"
+            elif i == 1: theme_col = "#94A3B8"
+            elif i == 2: theme_col = "#B45309"
+            else:        theme_col = "#64748B"
             
             score_col = "#EF4444" if row['XP'] < 0 else "#10B981"
             
-            # Card Background (Shadow + White Body)
             card_x_start = 40
             card_width = self.W - 80
             draw.rounded_rectangle(
@@ -488,20 +441,18 @@ class LeaderboardGenerator:
                 radius=35, fill=self.COLOR_CARD_BG
             )
             
-            # --- Column 1: Rank Circle (Left) ---
+            # Rank Circle
             circle_cx = 150
             circle_cy = current_y + 130
             r = 85
             draw.ellipse([(circle_cx-r, circle_cy-r), (circle_cx+r, circle_cy+r)], fill=theme_col)
             draw.text((circle_cx, circle_cy), str(i+1), font=f_rank_num, fill="white", anchor="mm")
             
-            # --- Column 2: Group Info (Center) ---
+            # Info
             text_x_start = 280
-            max_text_width = 700 # จำกัดความกว้างไม่ให้ชนคะแนน
+            max_text_width = 700 
             
-            # 2.1 Group Name (Dynamic Fit)
-            # ใช้พิกัด Y=90 (เทียบจาก Top ของ Card)
-            # ใช้ anchor='ls' (Left-Baseline) เพื่อรองรับสระภาษาไทย
+            # Group Name (Fit)
             group_name_y = current_y + 100 
             self.draw_text_fit(
                 draw, self.clean(str(row['GroupName'])), 
@@ -509,13 +460,13 @@ class LeaderboardGenerator:
                 "Sarabun-Bold.ttf", 90, self.COLOR_TEXT_MAIN, anchor="ls"
             )
             
-            # 2.2 Members (Truncate & Draw)
+            # Members
             members_text = self.clean(str(row['Members']))
             if len(members_text) > 65: members_text = members_text[:62] + "..."
             members_y = current_y + 170
             draw.text((text_x_start, members_y), members_text, font=f_members, fill=self.COLOR_TEXT_SUB, anchor="ls")
             
-            # 2.3 Progress Bar
+            # Progress Bar
             bar_y = current_y + 220
             bar_w = 600
             bar_h = 16
@@ -523,40 +474,35 @@ class LeaderboardGenerator:
             if pct > 0:
                 draw.rounded_rectangle([(text_x_start, bar_y), (text_x_start+int(bar_w*pct), bar_y+bar_h)], radius=8, fill=rank_info['color'])
             
-            # 2.4 Rank Name & Privilege (Prevent Overlap)
+            # Rank Name & Privilege
             rank_text_x = text_x_start + bar_w + 30
             
-            # Rank Title
+            # Title
             draw.text((rank_text_x, bar_y-5), self.clean(rank_info['th']), font=f_small_label, fill=rank_info['color'], anchor="lt")
             
-            # Privilege Description (Dynamic Fit)
+            # Desc (Fit)
             priv_desc = self.clean(rank_info.get('desc', ''))
             priv_y = bar_y + 60
             self.draw_text_fit(
                 draw, priv_desc, 
-                450, # Max width สำหรับคำอธิบาย
+                450, 
                 rank_text_x, priv_y, 
                 "Sarabun-Regular.ttf", 40, self.COLOR_TEXT_SUB, anchor="ls"
             )
 
-            # --- Column 3: Score (Right) ---
+            # Score
             score_x_end = self.W - 100
-            
-            # Score Number
             draw.text((score_x_end, current_y+110), f"{row['XP']}", font=f_score_num, fill=score_col, anchor="rs")
-            # "XP" Label
             draw.text((score_x_end, current_y+160), "XP", font=f_small_label, fill="#94A3B8", anchor="rs")
             
-            # Next Loop
             current_y += self.H_ROW
             
-        # --- 3. Footer ---
+        # Footer
         footer_y = total_h - 70
         f_footer = self.load_font("Sarabun-Regular.ttf", 45)
         timestamp = datetime.now().strftime('%d/%m/%Y %H:%M')
         draw.text((self.W//2, footer_y), f"Generated by Classroom OS • {timestamp}", font=f_footer, fill="#94A3B8", anchor="mm")
         
-        # Export
         buf = io.BytesIO()
         img.save(buf, format='PNG')
         return buf.getvalue()
@@ -620,7 +566,6 @@ with tabs[0]:
     if room_df.empty:
         st.warning("⚠️ ยังไม่มีกลุ่มในห้องนี้ กรุณาไปที่แท็บ 'Group Management' เพื่อสร้างกลุ่มก่อนครับ")
     else:
-        # Selection Mode
         col_mode, col_select = st.columns([1, 3])
         with col_mode:
             mode = st.radio("รูปแบบการให้คะแนน:", ["รายกลุ่ม (Single)", "หลายกลุ่ม (Batch)"])
@@ -630,7 +575,6 @@ with tabs[0]:
             else:
                 target_groups = st.multiselect("🎯 เลือกกลุ่มเป้าหมาย (หลายกลุ่ม)", room_df['GroupName'].unique())
         
-        # Display Single Group Stats
         if len(target_groups) == 1:
             g_data = room_df[room_df['GroupName'] == target_groups[0]].iloc[0]
             rank_info = rs.get_rank(g_data['XP'])
@@ -647,11 +591,8 @@ with tabs[0]:
             """, unsafe_allow_html=True)
 
         st.divider()
-        
-        # Actions
         c1, c2 = st.columns(2)
         
-        # Helper Function to Process Action
         def process_action(reason, amount):
             if not target_groups:
                 st.error("กรุณาเลือกกลุ่มก่อนครับ")
@@ -691,7 +632,6 @@ with tabs[1]:
             st.markdown("### 🖼️ Leaderboard Image")
             st.caption("ระบบจะสร้างภาพความละเอียดสูง พร้อมจัดระเบียบตัวหนังสือให้อัตโนมัติ")
             
-            # Generate Image using the new robust engine
             img_bytes = img_gen.generate(selected_room, room_df, rs)
             
             st.download_button(
@@ -705,13 +645,10 @@ with tabs[1]:
             
         st.markdown("---")
         
-        # Web View Leaderboard
         sorted_rows = room_df.sort_values("XP", ascending=False).reset_index(drop=True)
         for i, row in sorted_rows.iterrows():
             r = rs.get_rank(row['XP'])
             pct, lbl = rs.get_progress(row['XP'])
-            
-            # Badges
             try: badges = json.loads(row['Badges'])
             except: badges = []
             icon_str = be.render_icons(badges)
@@ -780,12 +717,8 @@ with tabs[2]:
 # --- TAB 4: PRIVILEGES INFO ---
 with tabs[3]:
     st.markdown("## 🏛️ ทำเนียบสิทธิพิเศษ (Privilege Hierarchy)")
-    
-    # ดึงข้อมูลจาก RankSystem มาแสดงเลย เพื่อความถูกต้อง 100%
     for rank in rs.ranks:
-        # ข้าม Probation
         if rank['name'] == "PROBATION": continue
-        
         st.markdown(f"""
         <div class='rank-detail-card' style='border-left-color: {rank['color']};'>
             <div style='display:flex; justify-content:space-between; align-items:center;'>
@@ -798,7 +731,6 @@ with tabs[3]:
         </div>
         """, unsafe_allow_html=True)
 
-    # Probation แยกต่างหาก
     prob = rs.ranks[-1]
     st.markdown(f"""
     <div class='rank-detail-card' style='border-left-color: {prob['color']}; background:#fff1f2;'>
@@ -810,8 +742,6 @@ with tabs[3]:
 # --- TAB 5: MANAGEMENT ---
 with tabs[4]:
     st.markdown("### 🛠️ Group Management System")
-    
-    # 1. Create
     with st.expander("➕ สร้างกลุ่มใหม่ (Create Group)", expanded=False):
         with st.form("create_grp"):
             n = st.text_input("ชื่อกลุ่ม")
@@ -823,8 +753,6 @@ with tabs[4]:
                     st.error("ชื่อกลุ่มซ้ำ! กรุณาใช้ชื่ออื่น")
                     
     st.markdown("---")
-    
-    # 2. Edit / Move
     st.markdown("#### ✏️ แก้ไขข้อมูล / ย้ายสมาชิก")
     col_e1, col_e2 = st.columns([2, 1])
     with col_e1:
@@ -839,8 +767,6 @@ with tabs[4]:
                         st.success("บันทึกแล้ว!"); time.sleep(1); st.rerun()
                     else:
                         st.error("บันทึกไม่ผ่าน (ชื่ออาจซ้ำ)")
-                        
-    # 3. Delete
     with col_e2:
         st.markdown("#### 🗑️ ลบกลุ่ม")
         st.warning("ลบแล้วกู้คืนไม่ได้")
@@ -850,15 +776,12 @@ with tabs[4]:
             st.rerun()
             
     st.markdown("---")
-    
-    # 4. Power Edit
     with st.expander("⚡ แก้ไขประวัติคะแนนย้อนหลัง (Power Edit)", expanded=False):
         pe_target = st.selectbox("เลือกกลุ่ม", ["-"] + list(room_df['GroupName'].unique()), key="pe")
         if pe_target != "-":
             r = room_df[room_df['GroupName'] == pe_target].iloc[0]
             try: h = json.loads(r['HistoryLog'])
             except: h = []
-            
             edited_h = st.data_editor(pd.DataFrame(h), num_rows="dynamic", use_container_width=True)
             if st.button("บันทึกประวัติใหม่ทั้งหมด"):
                 if db.advanced_edit_history(selected_room, pe_target, edited_h, all_df, be):
