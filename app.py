@@ -1198,7 +1198,7 @@ class UIManager:
                 # Use streamlit's native progress bar for simplicity in HTML embedding
                 st.progress(prog_pct)
 
-def _render_analytics_tab(self, room_df: pd.DataFrame):
+    def _render_analytics_tab(self, room_df: pd.DataFrame):
         st.header("📈 Performance Analytics")
         if room_df.empty:
             st.warning("No data available for analysis.")
