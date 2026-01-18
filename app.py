@@ -76,12 +76,13 @@ st.markdown("""
 class RankSystem:
     def __init__(self):
         self.ranks = [
-            {"name": "PRESIDENT", "th": "👑 ประธานรุ่น", "min_xp": 1000, "color": "#f59e0b", "bg": "#fef3c7"},
-            {"name": "DIRECTOR", "th": "💼 หัวหน้าฝ่าย", "min_xp": 600, "color": "#8b5cf6", "bg": "#f3e8ff"},
-            {"name": "MANAGER", "th": "👔 หัวหน้าแผนก", "min_xp": 300, "color": "#3b82f6", "bg": "#dbeafe"},
-            {"name": "EMPLOYEE", "th": "👨‍💼 พนักงาน", "min_xp": 100, "color": "#10b981", "bg": "#d1fae5"},
-            {"name": "INTERN", "th": "👶 เด็กฝึกงาน", "min_xp": 0, "color": "#64748b", "bg": "#f1f5f9"},
-            {"name": "PROBATION", "th": "⚠️ ทัณฑ์บน", "min_xp": -300, "color": "#ef4444", "bg": "#fee2e2"}
+            # อัปเดตข้อมูลสิทธิ์ (desc) ให้ตรงกับที่แก้ใน Tab 4
+            {"name": "PRESIDENT", "th": "👑 ประธานรุ่น", "min_xp": 1000, "color": "#f59e0b", "bg": "#fef3c7", "desc": "Immun. (ไม่ทำ 3 งาน) + โบนัส 1 ทุกงาน"},
+            {"name": "DIRECTOR", "th": "💼 หัวหน้าฝ่าย", "min_xp": 600, "color": "#8b5cf6", "bg": "#f3e8ff", "desc": "Workload Cut (ลดงาน 50%)"},
+            {"name": "MANAGER", "th": "👔 หัวหน้าแผนก", "min_xp": 300, "color": "#3b82f6", "bg": "#dbeafe", "desc": "Second Chance (แก้ตัวได้ 1 งาน/หน่วย)"},
+            {"name": "EMPLOYEE", "th": "👨‍💼 พนักงาน", "min_xp": 100, "color": "#10b981", "bg": "#d1fae5", "desc": "Time Ext. (ส่งช้าได้ 2 สัปดาห์)"},
+            {"name": "INTERN", "th": "👶 เด็กฝึกงาน", "min_xp": 0, "color": "#64748b", "bg": "#f1f5f9", "desc": "Check-up (ครูช่วยตรวจก่อนส่ง)"},
+            {"name": "PROBATION", "th": "⚠️ ทัณฑ์บน", "min_xp": -999999, "color": "#ef4444", "bg": "#fee2e2", "desc": "รีบทำงานแก้คะแนนด่วน!"}
         ]
     def get_rank(self, xp):
         if xp < 0: return self.ranks[-1]
@@ -153,12 +154,10 @@ class DataManager:
             return True
         return False
     
-    # --- ฟังก์ชันใหม่: แก้ไขชื่อและสมาชิก ---
+    # --- ฟังก์ชันแก้ไขชื่อและสมาชิก ---
     def edit_group(self, room, old_name, new_name, new_members, df):
-        # เช็คชื่อซ้ำ (ถ้ามีการเปลี่ยนชื่อ)
         if new_name != old_name and ((df['Room'] == room) & (df['GroupName'] == new_name)).any():
             return False 
-        
         idx = df[(df['Room'] == room) & (df['GroupName'] == old_name)].index
         if not idx.empty:
             i = idx[0]
@@ -185,10 +184,10 @@ class DataManager:
         return False
 
 # ==============================================================================
-# 3. IMAGE GENERATOR (STANDARD PIL - NO EMOJI BUT STABLE)
+# 3. IMAGE GENERATOR (WITH PRIVILEGES)
 # ==============================================================================
 def generate_image(room_name, df, rank_sys):
-    # Cleaner Function to remove Emojis for drawing
+    # Cleaner Function
     def clean(text):
         for e in ["👑", "💼", "👔", "👨‍💼", "👶", "⚠️", "🩸", "💎", "💸", "🎯", "🔥", "🏆"]:
             text = text.replace(e, "")
@@ -215,7 +214,7 @@ def generate_image(room_name, df, rank_sys):
     f_score = load_font("Sarabun-Bold.ttf", 110)
     f_badge = load_font("Sarabun-Bold.ttf", 55)
     f_privilege = load_font("Sarabun-Regular.ttf", 40) # Font สำหรับสิทธิพิเศษ
-    
+
     # Draw Header
     draw.rectangle([(0, 0), (W, HEADER_H)], fill='#4338CA')
     draw.ellipse([(1000, -100), (1600, 500)], fill='#4F46E5')
@@ -245,24 +244,31 @@ def generate_image(room_name, df, rank_sys):
         draw.ellipse([(cx-80, cy-80), (cx+80, cy+80)], fill=tc)
         draw.text((cx, cy), str(i+1), font=f_rank, fill="white", anchor="mm")
         
-        # Info (Dynamic Font Size)
+        # Info Column
         tx = 280
+        
+        # 1. Group Name (Smart Resize)
         name = str(row['GroupName'])
         fz = 85
         while fz > 40:
             if load_font("Sarabun-Bold.ttf", fz).getlength(name) < 750: break
             fz -= 5
-        draw.text((tx, curr_y+100), clean(name), font=load_font("Sarabun-Bold.ttf", fz), fill="#1E293B", anchor="ls")
+        draw.text((tx, curr_y+90), clean(name), font=load_font("Sarabun-Bold.ttf", fz), fill="#1E293B", anchor="ls")
         
+        # 2. Members
         mem = str(row['Members'])
         if len(mem)>60: mem=mem[:58]+"..."
         draw.text((tx, curr_y+160), clean(mem), font=f_mem, fill="#64748B", anchor="ls")
         
-        # Progress Bar
+        # 3. Progress Bar & Privileges (วาดชื่อยศและสิทธิพิเศษ)
         by = curr_y + 210
         bar_w = 600 # ลดความกว้างหลอดนิดนึงเพื่อให้มีที่ด้านขวา
-        draw.rounded_rectangle([(tx, by), (tx+650, by+16)], radius=8, fill="#F1F5F9")
-        if pct>0: draw.rounded_rectangle([(tx, by), (tx+int(650*pct), by+16)], radius=8, fill=rank_info['color'])
+        
+        # หลอดพลัง
+        draw.rounded_rectangle([(tx, by), (tx+bar_w, by+16)], radius=8, fill="#F1F5F9")
+        if pct>0: draw.rounded_rectangle([(tx, by), (tx+int(bar_w*pct), by+16)], radius=8, fill=rank_info['color'])
+        
+        # วาดชื่อยศ (บน)
         text_start_x = tx + bar_w + 30
         draw.text((text_start_x, by-5), clean(rank_info['th']), font=f_badge, fill=rank_info['color'], anchor="lt")
         
@@ -373,7 +379,7 @@ with tabs[3]:
     for name, xp, col, bg, title, desc in ranks_data:
         st.markdown(f"<div class='rank-detail-card' style='border-left-color: {col};'><h3 style='color:{col}; margin:0;'>{name}</h3><span class='status-badge' style='background:{bg}; color:{col};'>{xp}</span><hr style='margin:10px 0;'><h4>{title}</h4><p>{desc}</p></div>", unsafe_allow_html=True)
 
-# TAB 5 (MANAGEMENT) - แก้ไขใหม่เพิ่มฟีเจอร์แก้ไขกลุ่ม
+# TAB 5 (MANAGEMENT)
 with tabs[4]:
     st.markdown("### 🛠️ จัดการข้อมูลกลุ่ม")
     
@@ -388,7 +394,7 @@ with tabs[4]:
 
     st.markdown("---")
     
-    # 2. แก้ไข / ย้ายสมาชิก (เพิ่มใหม่)
+    # 2. แก้ไข / ย้ายสมาชิก
     st.markdown("#### ✏️ แก้ไข / ย้ายสมาชิก")
     col_edit, col_del = st.columns([2, 1])
     
