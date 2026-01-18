@@ -501,190 +501,147 @@ class GoogleSheetsRepository:
 
 class GraphicsEngine:
     """
-    Handles the generation of the high-resolution leaderboard image.
-    Utilizes explicit, absolute positioning to ensure correct rendering
-    of complex typography, specifically Thai vowels and tone marks.
+    Renders high-fidelity leaderboards.
+    Fixes: Text overlapping and missing glyphs (rectangles).
     """
     def __init__(self):
         self.cfg = AppConfig()
         self._font_cache = {}
 
     def _get_font(self, name: str, size: int) -> ImageFont.FreeTypeFont:
-        """Loads a font from disk with caching."""
         key = (name, size)
         if key not in self._font_cache:
             try:
-                # Ensure Pillow version >= 10.0.0 for best text features
-                font = ImageFont.truetype(name, size)
-                self._font_cache[key] = font
-            except IOError as e:
-                logger.error(f"Could not load font '{name}'. Falling back to default. Error: {e}")
-                font = ImageFont.load_default()
-                self._font_cache[key] = font
+                self._font_cache[key] = ImageFont.truetype(name, size)
+            except:
+                self._font_cache[key] = ImageFont.load_default()
         return self._font_cache[key]
 
-    def _clean_text_for_render(self, text: str) -> str:
-        """
-        Prepares text for rendering by removing characters known to cause
-        issues with PIL's standard font renderer (like complex emojis).
-        Thai characters are preserved.
-        """
+    def _clean_text(self, text: str) -> str:
+        """Removes emojis and special characters that cause rendering artifacts."""
         if not isinstance(text, str): return ""
-        # Blocklist of problematic emoji ranges/characters
-        problematic_chars = ["👑", "💼", "👔", "👨‍💼", "👶", "⚠️", "🩸", "💎", "💸", "🎯", "🔥", "🏆"]
-        cleaned = text
-        for char in problematic_chars:
-            cleaned = cleaned.replace(char, "")
-        return cleaned.strip()
+        # Keep only Thai characters, Alphanumeric, and basic punctuation
+        return re.sub(r'[^\w\s\u0E00-\u0E7F().,-]', '', text).strip()
 
-    def _draw_text_with_autofit(self, draw: ImageDraw.Draw, text: str, 
-                                x: int, y: int, max_width: int,
-                                font_name: str, max_size: int, 
-                                color: str, anchor: str = "lt") -> None:
-        """
-        Draws text, automatically reducing font size if it exceeds max_width.
-        Uses 'lt' (Left Top) anchor for predictable vertical positioning.
-        """
-        text = self._clean_text_for_render(text)
+    def _draw_text_autofit(self, draw, text, x, y, max_w, font_name, max_s, color, anchor="lt"):
+        # Clean text before drawing to prevent squares
+        text = self._clean_text(text)
         if not text: return
-
-        current_size = max_size
-        min_size = 30 # Absolute minimum legible size
         
-        font = self._get_font(font_name, current_size)
-        
-        # Iteratively reduce size until it fits
-        while current_size > min_size:
-            if font.getlength(text) <= max_width:
-                break
-            current_size -= 4 # Step down size
-            font = self._get_font(font_name, current_size)
-            
-        # Final draw with fitted font
+        size = max_s
+        font = self._get_font(font_name, size)
+        while size > 30:
+            if font.getlength(text) <= max_w: break
+            size -= 4
+            font = self._get_font(font_name, size)
         draw.text((x, y), text, font=font, fill=color, anchor=anchor)
 
-    # ฟังก์ชันนี้คือตัวที่ Error แจ้งว่าหาไม่เจอครับ (ใส่กลับมาให้แล้ว)
-    def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manager: RankManager) -> bytes:
-        """
-        Orchestrates the entire image generation process.
-        Uses explicit vertical spacing to solve Thai typography overlaps.
-        """
-        logger.info(f"Starting image generation for room: {room_name}")
+    def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_mgr: RankManager) -> bytes:
+        data = df.sort_values("XP", ascending=False).reset_index(drop=True)
         
-        # 1. Prepare Data
-        leaderboard_data = df.sort_values("XP", ascending=False).reset_index(drop=True)
+        # Calculate Dimensions
+        # FIX: Ensure canvas height is calculated correctly
+        canvas_height = self.cfg.IMG_HEADER_HEIGHT + (len(data) * self.cfg.IMG_ROW_HEIGHT) + self.cfg.IMG_FOOTER_HEIGHT
         
-        # 2. Calculate Canvas Dimensions
-        total_rows = len(leaderboard_data)
-        # คำนวณความสูงรวมของภาพ
-        canvas_height = (
-            self.cfg.IMG_HEADER_HEIGHT + 
-            (total_rows * self.cfg.IMG_ROW_HEIGHT) + 
-            self.cfg.IMG_FOOTER_HEIGHT
-        )
-        
-        # 3. Initialize Canvas
-        img = Image.new('RGBA', (self.cfg.IMG_WIDTH, canvas_height), color=self.cfg.COLOR_BG_MAIN)
+        img = Image.new('RGBA', (self.cfg.IMG_WIDTH, canvas_height), self.cfg.COLOR_BG_MAIN)
         draw = ImageDraw.Draw(img)
-        
+
         # --- HEADER ---
         draw.rectangle([(0, 0), (self.cfg.IMG_WIDTH, self.cfg.IMG_HEADER_HEIGHT)], fill=self.cfg.COLOR_BRAND_PRIMARY)
         draw.ellipse([(900, -150), (1500, 450)], fill=self.cfg.COLOR_BRAND_SECONDARY)
         draw.ellipse([(-100, 250), (500, 850)], fill=self.cfg.COLOR_BRAND_SECONDARY)
         
-        center_x = self.cfg.IMG_WIDTH // 2
-        
+        cx = self.cfg.IMG_WIDTH // 2
         f_icon = self._get_font(self.cfg.FONT_PRIMARY_REG, 180)
-        draw.text((center_x, 220), "🏆", font=f_icon, fill="white", anchor="mm")
+        draw.text((cx, 220), "🏆", font=f_icon, fill="white", anchor="mm")
         
         f_title = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 60)
-        draw.text((center_x, 380), "CLASSROOM LEADERBOARD", font=f_title, fill=self.cfg.COLOR_BRAND_ACCENT, anchor="mm")
+        draw.text((cx, 380), "CLASSROOM LEADERBOARD", font=f_title, fill=self.cfg.COLOR_BRAND_ACCENT, anchor="mm")
         
         f_room = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 150)
-        draw.text((center_x, 550), room_name, font=f_room, fill="white", anchor="mm")
+        draw.text((cx, 550), room_name, font=f_room, fill="white", anchor="mm")
 
         # --- ROWS ---
-        current_y_cursor = self.cfg.IMG_HEADER_HEIGHT + 50
+        current_y = self.cfg.IMG_HEADER_HEIGHT + 50
         
-        # Pre-fetch fonts
-        f_rank_num = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 85)
-        f_score_val = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 110)
-        f_score_lbl = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 45)
+        # Pre-load fonts
+        f_rank = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 85)
+        f_score = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 110)
+        f_label = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 45)
         f_members = self._get_font(self.cfg.FONT_PRIMARY_REG, 42)
         f_rank_title = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 48)
         f_privilege = self._get_font(self.cfg.FONT_PRIMARY_REG, 36)
 
-        for i, row in leaderboard_data.iterrows():
+        for i, row in data.iterrows():
             xp = row['XP']
-            rank_def = rank_manager.get_rank_by_xp(xp)
-            progress_pct, _ = rank_manager.calculate_progress_to_next(xp)
+            rank_def = rank_mgr.get_rank_by_xp(xp)
+            pct, _ = rank_mgr.calculate_progress_to_next(xp)
             
-            rank_idx = i if i < 3 else "default"
-            theme = self.cfg.RANK_THEMES[rank_idx]
-            rank_color_hex = theme["hex"]
-            score_color = self.cfg.COLOR_SCORE_NEGATIVE if xp < 0 else self.cfg.COLOR_SCORE_POSITIVE
+            theme = self.cfg.RANK_THEMES.get(i if i < 3 else "default")
+            score_col = self.cfg.COLOR_SCORE_NEGATIVE if xp < 0 else self.cfg.COLOR_SCORE_POSITIVE
 
-            # Layout
-            card_x_start = self.cfg.IMG_PADDING_X
-            card_width = self.cfg.IMG_WIDTH - (self.cfg.IMG_PADDING_X * 2)
-            card_height = self.cfg.IMG_ROW_HEIGHT - 40 
-            card_y_start = current_y_cursor
-            card_y_end = card_y_start + card_height
+            # Card Layout
+            card_x = self.cfg.IMG_PADDING_X
+            card_w = self.cfg.IMG_WIDTH - (self.cfg.IMG_PADDING_X * 2)
+            card_h = self.cfg.IMG_ROW_HEIGHT - 40
             
-            # Card Body
-            draw.rounded_rectangle([(card_x_start + 8, card_y_start + 10), (card_x_start + card_width + 8, card_y_end + 10)], radius=self.cfg.IMG_CARD_RADIUS, fill=self.cfg.COLOR_CARD_SHADOW)
-            draw.rounded_rectangle([(card_x_start, card_y_start), (card_x_start + card_width, card_y_end)], radius=self.cfg.IMG_CARD_RADIUS, fill=self.cfg.COLOR_CARD_SURFACE)
+            # Draw Card
+            draw.rounded_rectangle([(card_x+8, current_y+10), (card_x+card_w+8, current_y+card_h+10)], radius=self.cfg.IMG_CARD_RADIUS, fill=self.cfg.COLOR_CARD_SHADOW)
+            draw.rounded_rectangle([(card_x, current_y), (card_x+card_w, current_y+card_h)], radius=self.cfg.IMG_CARD_RADIUS, fill=self.cfg.COLOR_CARD_SURFACE)
 
-            # Col 1: Rank Circle
-            circle_center_x = card_x_start + 120
-            circle_center_y = card_y_start + (card_height // 2)
-            draw.ellipse([(circle_center_x - 75, circle_center_y - 75), (circle_center_x + 75, circle_center_y + 75)], fill=rank_color_hex)
-            draw.text((circle_center_x, circle_center_y), str(i + 1), font=f_rank_num, fill="white", anchor="mm")
+            # 1. Rank Circle
+            circle_cx = card_x + 120
+            circle_cy = current_y + (card_h // 2)
+            draw.ellipse([(circle_cx-75, circle_cy-75), (circle_cx+75, circle_cy+75)], fill=theme['hex'])
+            draw.text((circle_cx, circle_cy), str(i+1), font=f_rank, fill="white", anchor="mm")
 
-            # Col 2: Content (Explicit Spacing)
-            content_x_start = card_x_start + 260
-            content_max_width = 650
+            # 2. Content Zone (Updated Spacing Logic)
+            info_x = card_x + 260
+            info_w = 650
             
-            # Y-Grid System (ระยะห่างสำหรับภาษาไทย)
-            Y_POS_NAME = card_y_start + 60
-            Y_POS_MEMBERS = Y_POS_NAME + 75
-            Y_POS_PROGRESS_BAR = Y_POS_MEMBERS + 60
-            Y_POS_RANK_TITLE = Y_POS_PROGRESS_BAR + 55 
-            Y_POS_PRIVILEGE = Y_POS_RANK_TITLE + 55 
+            # FIX: Increase gaps significantly to prevent overlap
+            # Old gap was ~75px, but font size is 80px -> Overlap!
+            # New gap is 110px -> Safe.
+            y_name = current_y + 50
+            y_mem = y_name + 110  
+            y_bar = y_mem + 80
+            y_title = y_bar + 60 
+            y_priv = y_title + 60 
 
-            # Name & Members
-            self._draw_text_with_autofit(draw, str(row['GroupName']), content_x_start, Y_POS_NAME, content_max_width, self.cfg.FONT_PRIMARY_BOLD, 80, self.cfg.COLOR_TEXT_PRIMARY, anchor="lt")
+            # Group Name
+            self._draw_text_autofit(draw, str(row['GroupName']), info_x, y_name, info_w, self.cfg.FONT_PRIMARY_BOLD, 80, self.cfg.COLOR_TEXT_PRIMARY)
             
-            members_txt = self._clean_text_for_render(str(row['Members']))
-            if len(members_txt) > 65: members_txt = members_txt[:62] + "..."
-            draw.text((content_x_start, Y_POS_MEMBERS), members_txt, font=f_members, fill=self.cfg.COLOR_TEXT_SECONDARY, anchor="lt")
+            # Members
+            mem_txt = self._clean_text(str(row['Members']))
+            if len(mem_txt) > 65: mem_txt = mem_txt[:62] + "..."
+            draw.text((info_x, y_mem), mem_txt, font=f_members, fill=self.cfg.COLOR_TEXT_SECONDARY, anchor="lt")
 
-            # Bar
-            bar_width = 580
-            draw.rounded_rectangle([(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + bar_width, Y_POS_PROGRESS_BAR + 16)], radius=8, fill=self.cfg.COLOR_BG_MAIN)
-            if progress_pct > 0:
-                fill_width = max(int(bar_width * progress_pct), 20) if progress_pct > 0.01 else int(bar_width * progress_pct)
-                draw.rounded_rectangle([(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + fill_width, Y_POS_PROGRESS_BAR + 16)], radius=8, fill=rank_def.color)
+            # Progress Bar
+            draw.rounded_rectangle([(info_x, y_bar), (info_x+580, y_bar+16)], radius=8, fill=self.cfg.COLOR_BG_MAIN)
+            if pct > 0:
+                fw = max(int(580*pct), 20)
+                draw.rounded_rectangle([(info_x, y_bar), (info_x+fw, y_bar+16)], radius=8, fill=rank_def.color)
 
-            # Rank Title & Privilege
-            draw.text((content_x_start, Y_POS_RANK_TITLE), rank_def.th_name, font=f_rank_title, fill=rank_def.color, anchor="lt")
+            # Rank & Privilege
+            # FIX: Clean rank title to remove Emoji squares
+            clean_rank_title = self._clean_text(rank_def.th_name)
+            draw.text((info_x, y_title), clean_rank_title, font=f_rank_title, fill=rank_def.color, anchor="lt")
             
-            # Privilege Description
-            self._draw_text_with_autofit(draw, rank_def.description, content_x_start, Y_POS_PRIVILEGE, content_max_width, self.cfg.FONT_PRIMARY_REG, 40, self.cfg.COLOR_TEXT_SECONDARY, anchor="lt")
+            self._draw_text_autofit(draw, rank_def.description, info_x, y_priv, info_w, self.cfg.FONT_PRIMARY_REG, 40, self.cfg.COLOR_TEXT_SECONDARY)
 
-            # Col 3: Score
-            score_x_anchor = self.cfg.IMG_WIDTH - self.cfg.IMG_PADDING_X - 40
-            score_y_center = card_y_start + (card_height // 2)
-            draw.text((score_x_anchor, score_y_center - 10), f"{xp}", font=f_score_val, fill=score_color, anchor="rs")
-            draw.text((score_x_anchor, score_y_center + 50), "XP", font=f_score_lbl, fill=self.cfg.COLOR_TEXT_MUTED, anchor="rs")
+            # 3. Score
+            score_x = self.cfg.IMG_WIDTH - self.cfg.IMG_PADDING_X - 40
+            score_cy = current_y + (card_h // 2)
+            draw.text((score_x, score_cy-10), f"{xp}", font=f_score, fill=score_col, anchor="rs")
+            draw.text((score_x, score_cy+50), "XP", font=f_label, fill=self.cfg.COLOR_TEXT_MUTED, anchor="rs")
 
-            current_y_cursor += self.cfg.IMG_ROW_HEIGHT
+            current_y += self.cfg.IMG_ROW_HEIGHT
 
         # --- FOOTER ---
-        footer_y_center = canvas_height - (self.cfg.IMG_FOOTER_HEIGHT // 2)
-        f_footer = self._get_font(self.cfg.FONT_PRIMARY_REG, 38)
-        timestamp_str = datetime.now().strftime('%d/%m/%Y %H:%M')
-        draw.text((self.cfg.IMG_WIDTH // 2, footer_y_center), f"Generated by {self.cfg.APP_NAME} • {timestamp_str}", font=f_footer, fill=self.cfg.COLOR_TEXT_MUTED, anchor="mm")
+        footer_cy = canvas_height - (self.cfg.IMG_FOOTER_HEIGHT // 2)
+        f_foot = self._get_font(self.cfg.FONT_PRIMARY_REG, 38)
+        ts = datetime.now().strftime('%d/%m/%Y %H:%M')
+        draw.text((self.cfg.IMG_WIDTH // 2, footer_cy), f"Generated by {self.cfg.APP_NAME} • {ts}", font=f_foot, fill=self.cfg.COLOR_TEXT_MUTED, anchor="mm")
 
         img_final = img.convert('RGB')
         buf = io.BytesIO()
@@ -827,7 +784,7 @@ class UIManager:
             </style>
         """, unsafe_allow_html=True)
 
-    def render_sidebar(self) -> str:
+def render_sidebar(self) -> str:
         """Renders the sidebar and returns the selected classroom."""
         with st.sidebar:
             st.image("https://cdn-icons-png.flaticon.com/512/4738/4738983.png", width=60)
@@ -836,7 +793,7 @@ class UIManager:
             st.divider()
             
             st.subheader("🏫 Classroom Context")
-            # FIX: Removed ม.1/3 and ม.1/4
+            # FIX: Update classroom list (Removed 1/3, 1/4)
             selected_room = st.selectbox(
                 "Select Active Class",
                 ["ม.1/1", "ม.1/2", "ม.1/10"],
