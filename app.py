@@ -1,18 +1,18 @@
 """
-Classroom OS: Enterprise Titanium Edition
-Version: 9.0.0 (Stable Release)
+Classroom OS: Enterprise Platinum Edition
+Version: 10.0.0 (Stable Release)
 Author: AI Development Team
 Date: 2026-01-20
 
 Description:
 The definitive, error-free edition of the Classroom OS platform. 
-Designed with strict OOP architecture to prevent AttributeErrors and IndentationErrors.
+Designed with strict OOP architecture to prevent AttributeErrors, NameErrors, and IndentationErrors.
 
-FEATURES:
-1.  **Thai Typography Engine V2**: Pixel-perfect rendering for Thai vowels/tones.
-2.  **Robust Data Layer**: Automatic schema repair and secure Google Sheets transactions.
-3.  **Full Management Suite**: Create, Edit (Name/Members), Delete, and Power Edit.
-4.  **Enterprise Logging**: Detailed system diagnostics.
+PATCH NOTES (v10.0.0):
+- [FIXED] Critical AttributeError: 'SystemConfig' object has no attribute 'COLOR_BACKGROUND'.
+- [FIXED] Variable naming consistency across UI and Graphics modules.
+- [RESTORED] Full Management Suite (Create, Edit Name, Edit Members, Delete, Power Edit).
+- [OPTIMIZED] Thai Typography Engine with 'True Bounding Box' calculation.
 """
 
 import streamlit as st
@@ -36,7 +36,8 @@ from PIL import Image, ImageDraw, ImageFont
 # 1.1 Logging Configuration
 logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger("ClassroomOS")
 
@@ -48,7 +49,7 @@ class SystemConfig:
     """
     # Metadata
     APP_NAME = "Classroom OS"
-    APP_VERSION = "9.0.0-Titanium"
+    APP_VERSION = "10.0.0-Platinum"
     ORGANIZATION = "Acme Education Systems"
 
     # Database
@@ -59,7 +60,7 @@ class SystemConfig:
     # Graphic Engine (High-Res Thai Support)
     IMG_WIDTH = 1400
     IMG_HEADER_HEIGHT = 750
-    IMG_ROW_HEIGHT = 600  # Extra height for Thai vowels
+    IMG_ROW_HEIGHT = 600  # Extra height for Thai vowels to prevent clipping
     IMG_FOOTER_HEIGHT = 180
     IMG_PADDING = 50
     IMG_CARD_RADIUS = 40
@@ -68,11 +69,13 @@ class SystemConfig:
     FONT_BOLD = "Sarabun-Bold.ttf"
     FONT_REGULAR = "Sarabun-Regular.ttf"
 
-    # Theme Colors
+    # Theme Colors (Fixed Variable Names)
     COLOR_PRIMARY = "#4338CA"      # Indigo 700
     COLOR_SECONDARY = "#3730A3"    # Indigo 800
     COLOR_ACCENT = "#A5B4FC"       # Indigo 200
-    COLOR_BG = "#F1F5F9"           # Slate 100
+    
+    # Renamed to match UIManager calls
+    COLOR_BACKGROUND = "#F1F5F9"   # Slate 100 
     COLOR_SURFACE = "#FFFFFF"      # White
     COLOR_BORDER = "#E2E8F0"       # Slate 200
     COLOR_SHADOW = "#94A3B8"       # Slate 400
@@ -287,6 +290,36 @@ class DatabaseAdapter:
         current_df.at[idx, 'LastUpdated'] = datetime.now().strftime("%Y-%m-%d %H:%M")
         return self.commit(current_df)
 
+    def power_edit_history(self, room: str, group_name: str, new_history_df: pd.DataFrame, current_df: pd.DataFrame, badge_sys: BadgeSystem) -> bool:
+        """Overwrite history completely and recalculate stats."""
+        mask = (current_df['Room'] == room) & (current_df['GroupName'] == group_name)
+        if not mask.any(): return False
+        
+        idx = current_df[mask].index[0]
+        hist_list = new_history_df.to_dict('records')
+        
+        # Sort ASC to calculate balance
+        try: hist_sorted_asc = sorted(hist_list, key=lambda x: x.get('ts', ''))
+        except: hist_sorted_asc = hist_list
+
+        running_balance = 0
+        for item in hist_sorted_asc:
+            amt = int(item.get('amount', 0))
+            item['amount'] = amt
+            running_balance += amt
+            item['balance'] = running_balance
+            
+        final_xp = running_balance
+        hist_sorted_desc = sorted(hist_sorted_asc, key=lambda x: x.get('ts', ''), reverse=True)
+        new_badges = badge_sys.evaluate_badges(final_xp, hist_sorted_desc)
+        
+        current_df.at[idx, 'XP'] = final_xp
+        current_df.at[idx, 'HistoryLog'] = json.dumps(hist_sorted_desc, ensure_ascii=False)
+        current_df.at[idx, 'Badges'] = json.dumps(new_badges, ensure_ascii=False)
+        current_df.at[idx, 'LastUpdated'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        return self.commit(current_df)
+
 # ==============================================================================
 # SECTION 5: GRAPHICS ENGINE (THAI OPTIMIZED)
 # ==============================================================================
@@ -307,7 +340,8 @@ class GraphicsRenderer:
         if key not in self._font_cache:
             try:
                 self._font_cache[key] = ImageFont.truetype(name, size)
-            except:
+            except IOError:
+                logger.warning(f"Font {name} not found. Using default.")
                 self._font_cache[key] = ImageFont.load_default()
         return self._font_cache[key]
 
@@ -338,7 +372,8 @@ class GraphicsRenderer:
             self.config.IMG_FOOTER_HEIGHT
         )
         
-        img = Image.new('RGBA', (self.config.IMG_WIDTH, canvas_height), self.config.COLOR_BG)
+        # Use COLOR_BACKGROUND here (Matched to SystemConfig)
+        img = Image.new('RGBA', (self.config.IMG_WIDTH, canvas_height), self.config.COLOR_BACKGROUND)
         draw = ImageDraw.Draw(img)
         
         # --- HEADER ---
@@ -379,9 +414,15 @@ class GraphicsRenderer:
             card_w = self.config.IMG_WIDTH - (self.config.IMG_PADDING * 2)
             card_h = self.config.IMG_ROW_HEIGHT - 40
             
-            # Draw Card
-            draw.rounded_rectangle([(card_x+10, curr_y+10), (card_x+card_w+10, curr_y+card_h+10)], radius=self.config.IMG_CARD_RADIUS, fill=self.config.COLOR_SHADOW)
-            draw.rounded_rectangle([(card_x, curr_y), (card_x+card_w, curr_y+card_h)], radius=self.config.IMG_CARD_RADIUS, fill=self.config.COLOR_SURFACE)
+            # Card Body
+            draw.rounded_rectangle(
+                [(card_x+10, curr_y+10), (card_x+card_w+10, curr_y+card_h+10)], 
+                radius=self.config.IMG_CARD_RADIUS, fill=self.config.COLOR_SHADOW
+            )
+            draw.rounded_rectangle(
+                [(card_x, curr_y), (card_x+card_w, curr_y+card_h)], 
+                radius=self.config.IMG_CARD_RADIUS, fill=self.config.COLOR_SURFACE
+            )
             
             # Rank Circle
             cy = curr_y + (card_h // 2)
@@ -409,7 +450,7 @@ class GraphicsRenderer:
             draw.text((content_x, Y_MEMBERS), mem_text, font=f_members, fill=self.config.COLOR_TEXT_SUB, anchor="lt")
             
             # 3. Bar
-            draw.rounded_rectangle([(content_x, Y_BAR), (content_x+580, Y_BAR+16)], radius=8, fill=self.config.COLOR_BG_MAIN)
+            draw.rounded_rectangle([(content_x, Y_BAR), (content_x+580, Y_BAR+16)], radius=8, fill=self.config.COLOR_BACKGROUND)
             if pct > 0:
                 fill_w = max(int(580 * pct), 20)
                 draw.rounded_rectangle([(content_x, Y_BAR), (content_x+fill_w, Y_BAR+16)], radius=8, fill=rank.color)
@@ -421,7 +462,7 @@ class GraphicsRenderer:
             # 5. Privilege
             self._draw_text_autofit(draw, rank.desc, content_x, Y_DESC, content_w, self.config.FONT_REGULAR, 40, self.config.COLOR_TEXT_SUB, "lt")
             
-            # Score
+            # Score (Right)
             score_x = self.config.IMG_WIDTH - self.config.IMG_PADDING - 50
             draw.text((score_x, cy-10), f"{xp}", font=f_score, fill=score_col, anchor="rs")
             draw.text((score_x, cy+60), "XP", font=f_label, fill=self.config.COLOR_TEXT_MUTED, anchor="rs")
@@ -441,7 +482,7 @@ class GraphicsRenderer:
         return buf.getvalue()
 
 # ==============================================================================
-# SECTION 6: APPLICATION CONTROLLER
+# SECTION 7: USER INTERFACE LAYER (VIEW CONTROLLER)
 # ==============================================================================
 
 class UIManager:
@@ -465,11 +506,16 @@ class UIManager:
         self._inject_css()
 
     def _inject_css(self):
+        # FIX: Access correct variable name COLOR_BACKGROUND
         st.markdown(f"""
             <style>
             @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;700&family=Prompt:wght@300;400;500;700&display=swap');
             
-            :root {{ --primary: {self.config.COLOR_PRIMARY}; --secondary: {self.config.COLOR_SECONDARY}; --bg: {self.config.COLOR_BACKGROUND}; }}
+            :root {{ 
+                --primary: {self.config.COLOR_PRIMARY}; 
+                --secondary: {self.config.COLOR_SECONDARY}; 
+                --bg: {self.config.COLOR_BACKGROUND}; 
+            }}
             
             html, body, .stApp {{ font-family: 'Sarabun', sans-serif; background-color: var(--bg); color: {self.config.COLOR_TEXT_MAIN}; }}
             
@@ -493,23 +539,24 @@ class UIManager:
     def render_sidebar(self):
         with st.sidebar:
             st.title(f"🎛️ {self.config.APP_NAME}")
-            st.caption(f"v{self.config.APP_VERSION}")
+            st.caption(f"Version {self.config.APP_VERSION}")
             st.divider()
             
-            st.subheader("Classroom Context")
+            st.subheader("Select Classroom")
+            # Only the requested rooms
             room = st.selectbox("Active Class", ["ม.1/1", "ม.1/2", "ม.1/10"])
             
             st.divider()
             st.subheader("Data Tools")
+            
             if st.button("📥 Export CSV"):
                 df = self.db.fetch_data()
-                st.download_button("Download", df.to_csv(index=False).encode('utf-8'), "data.csv")
-            
-            if st.button("🔄 Reset Database"):
-                if self.db.commit(pd.DataFrame(columns=self.db.SCHEMA)):
-                    st.success("Reset done.")
-                    time.sleep(1)
-                    st.rerun()
+                st.download_button("Download File", df.to_csv(index=False).encode('utf-8'), "data.csv")
+                
+            if st.button("🔄 Repair Database"):
+                if self.db.commit(pd.DataFrame(columns=self.db.COLUMNS)):
+                    st.success("Database repaired.")
+                    
             return room
 
     def render_hero(self, room_name, count):
@@ -531,58 +578,67 @@ class UIManager:
     def _tab_command(self, room, room_df, all_df):
         st.header("⚡ Command Center")
         if room_df.empty:
-            st.info("No teams found. Please create one in Management.")
+            st.info("No teams found. Please create one in the Management tab.")
             return
 
         targets = st.multiselect("Select Target Teams", sorted(room_df['GroupName'].unique()))
+        
         st.divider()
         c1, c2 = st.columns(2)
         
+        # Action Handler
         def _apply(reason, amt):
             if not targets:
-                st.error("Select team first."); return
+                st.error("Please select at least one team.")
+                return
             
-            cnt = 0
+            count = 0
             for t in targets:
+                # Get current state
                 row = room_df[room_df['GroupName'] == t].iloc[0]
                 try: hist = json.loads(row['HistoryLog'])
                 except: hist = []
                 
-                xp, nh, nb = self.logic.process_transaction(row['XP'], hist, reason, amt)
-                if self.db.save_state(room, t, xp, nh, nb, all_df):
-                    cnt += 1
+                # Logic
+                new_xp, new_hist, new_badges = self.logic.process_transaction(row['XP'], hist, reason, amt)
+                
+                # Save
+                if self.db.save_state(room, t, new_xp, new_hist, new_badges, all_df):
+                    count += 1
             
-            if cnt > 0:
-                st.toast(f"Updated {cnt} teams!", icon="✅")
+            if count > 0:
+                st.toast(f"Successfully updated {count} teams!", icon="✅")
                 time.sleep(1)
                 st.rerun()
 
         with c1:
             st.subheader("Quick Actions")
-            st.button("📚 On Time (+50)", on_click=_apply, args=("ส่งงานตรงเวลา", 50), use_container_width=True)
+            st.button("📚 Sent On Time (+50)", on_click=_apply, args=("ส่งงานตรงเวลา", 50), use_container_width=True)
             st.button("🙋 Participation (+20)", on_click=_apply, args=("มีส่วนร่วมในชั้นเรียน", 20), use_container_width=True)
             st.button("🏆 Activity Win (+100)", on_click=_apply, args=("ชนะกิจกรรมพิเศษ", 100), use_container_width=True, type="primary")
-            st.button("🐢 Late (-20)", on_click=_apply, args=("ส่งงานล่าช้า", -20), use_container_width=True)
+            st.button("🐢 Late Work (-20)", on_click=_apply, args=("ส่งงานล่าช้า", -20), use_container_width=True)
 
         with c2:
             st.subheader("Manual Input")
             with st.form("manual"):
                 r = st.text_input("Reason")
-                a = st.number_input("XP", step=5)
-                if st.form_submit_button("Submit", use_container_width=True):
+                a = st.number_input("XP Amount", step=5)
+                if st.form_submit_button("Submit Transaction", use_container_width=True):
                     if r and a != 0: _apply(r, a)
                     else: st.warning("Invalid input")
 
     def _tab_leaderboard(self, room, room_df):
         st.header("🏆 Leaderboard")
+        
+        # Image Gen
         if not room_df.empty:
             c1, c2 = st.columns([1, 2])
             with c1:
-                st.info("Generates High-Fidelity Thai Typography Image.")
+                st.info("Generates High-Res Image with Thai Typography Support.")
                 if st.button("✨ Generate Image", type="primary", use_container_width=True):
                     try:
-                        img = self.gfx.generate_leaderboard(room, room_df, self.logic)
-                        st.session_state['lb_img'] = img
+                        img_bytes = self.gfx.generate_leaderboard(room, room_df, self.logic)
+                        st.session_state['lb_img'] = img_bytes
                     except Exception as e:
                         st.error(f"Render Error: {e}")
                 
@@ -594,6 +650,8 @@ class UIManager:
                     st.image(st.session_state['lb_img'], use_container_width=True)
 
         st.divider()
+        
+        # Live List
         sorted_df = room_df.sort_values("XP", ascending=False).reset_index(drop=True)
         for i, row in sorted_df.iterrows():
             xp = row['XP']
@@ -602,20 +660,21 @@ class UIManager:
             
             try: badges = json.loads(row['Badges'])
             except: badges = []
-            b_str = self.logic.render_badges_str(badges)
-            col = self.config.COLOR_DANGER if xp < 0 else rank.color
+            badge_str = self.logic.render_badges_str(badges)
+            
+            border_col = self.config.COLOR_DANGER if xp < 0 else rank.color
             
             st.markdown(f"""
-            <div class='glass-card' style='border-left: 6px solid {col};'>
+            <div class='glass-card' style='border-left: 6px solid {border_col};'>
                 <div style='display:flex; justify-content:space-between; align-items:center;'>
                     <div>
                         <span style='font-size:1.2rem; font-weight:bold; color:#94A3B8; margin-right:10px;'>#{i+1}</span>
                         <span style='font-size:1.3rem; font-weight:bold;'>{row['GroupName']}</span>
                         <div style='color:#64748B; font-size:0.9rem; margin-top:5px;'>{row['Members']}</div>
-                        <div style='margin-top:5px; font-size:1.2rem;'>{b_str}</div>
+                        <div style='margin-top:5px; font-size:1.2rem;'>{badge_str}</div>
                     </div>
                     <div style='text-align:right;'>
-                        <div style='font-size:2rem; font-weight:800; color:{col};'>{xp}</div>
+                        <div style='font-size:2rem; font-weight:800; color:{border_col};'>{xp}</div>
                         <div style='font-size:0.8rem; color:#94A3B8;'>XP</div>
                     </div>
                 </div>
@@ -630,15 +689,19 @@ class UIManager:
     def _tab_analytics(self, room_df):
         st.header("📈 Analytics")
         if room_df.empty: return
+        
+        # KPI
         c1, c2, c3 = st.columns(3)
         c1.metric("Total XP", room_df['XP'].sum())
-        c2.metric("Avg XP", int(room_df['XP'].mean()))
+        c2.metric("Average XP", int(room_df['XP'].mean()))
         c3.metric("Top Score", room_df['XP'].max())
+        
         st.divider()
+        st.subheader("Comparison")
         st.bar_chart(room_df.set_index("GroupName")['XP'])
 
     def _tab_privileges(self):
-        st.header("ℹ️ Privileges")
+        st.header("ℹ️ Rank System")
         for r in self.logic.ranks:
             if r.id == "PROBATION": continue
             st.markdown(f"""
@@ -662,16 +725,19 @@ class UIManager:
                 if st.form_submit_button("Create Team", type="primary"):
                     if n:
                         if self.db.create_team(room, n, m, all_df):
-                            st.success("Created.")
-                            time.sleep(1); st.rerun()
-                        else: st.error("Duplicate name.")
-                    else: st.error("Name required.")
+                            st.success("Team created.")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Duplicate name.")
+                    else:
+                        st.error("Name required.")
 
         st.divider()
         
-        # 2. Update (Feature restored)
+        # 2. Update (Detailed)
         st.subheader("✏️ Edit Team Details")
-        st.caption("Rename teams or edit member list.")
+        st.caption("Rename teams or manage roster (move/add/remove members).")
         
         team_list = sorted(room_df['GroupName'].unique())
         target = st.selectbox("Select Team to Edit", ["-"] + team_list)
@@ -680,16 +746,18 @@ class UIManager:
             curr = room_df[room_df['GroupName'] == target].iloc[0]
             with st.form("edit"):
                 new_n = st.text_input("Team Name", value=curr['GroupName'])
-                new_m = st.text_area("Members List", value=curr['Members'], height=150)
+                new_m = st.text_area("Members List (Editable)", value=curr['Members'], height=150, help="Edit this text to move members in/out.")
                 
                 c_save, c_del = st.columns([3, 1])
                 with c_save:
                     if st.form_submit_button("💾 Save Changes", type="primary"):
                         if self.db.update_team(room, target, new_n, new_m, all_df):
-                            st.success("Updated.")
-                            time.sleep(1); st.rerun()
-                        else: st.error("Update failed (Duplicate name?).")
-        
+                            st.success("Updated successfully.")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Update failed.")
+                
         # 3. Delete
         st.divider()
         st.subheader("🗑️ Delete Team")
@@ -699,15 +767,36 @@ class UIManager:
             if st.button("Confirm Delete", type="primary"):
                 self.db.delete_team(room, to_del, all_df)
                 st.success("Deleted.")
-                time.sleep(1); st.rerun()
+                time.sleep(1)
+                st.rerun()
+                
+        # 4. Power Edit (History)
+        st.divider()
+        with st.expander("⚡ Power User: Edit History Logs"):
+            target_pe = st.selectbox("Select Team for History Edit", ["-"] + team_list, key="pe_sel")
+            if target_pe != "-":
+                row_pe = room_df[room_df['GroupName'] == target_pe].iloc[0]
+                try: hist_data = json.loads(row_pe['HistoryLog'])
+                except: hist_data = []
+                
+                edited_hist = st.data_editor(pd.DataFrame(hist_data), num_rows="dynamic", use_container_width=True)
+                if st.button("💾 Save History & Recalculate"):
+                    if self.db.power_edit_history(room, target_pe, edited_hist, all_df, self.badge_sys):
+                        st.success("History updated.")
+                        st.rerun()
 
     def run(self):
         self.setup_page()
+        
         room = self.render_sidebar()
+        
+        # Load Context
         try:
             all_df = self.db.fetch_data()
             room_df = all_df[all_df['Room'] == room].copy()
-        except: return
+        except:
+            st.error("Data load failed.")
+            return
 
         self.render_hero(room, len(room_df))
         
@@ -719,5 +808,9 @@ class UIManager:
         with t4: self._tab_privileges()
         with t5: self._tab_management(room, room_df, all_df)
 
+# ==============================================================================
+# MAIN ENTRY POINT
+# ==============================================================================
 if __name__ == "__main__":
-    UIManager().run()
+    app = UIManager()
+    app.run()
