@@ -624,7 +624,7 @@ class GraphicsEngine:
         )
         
         # 3. Initialize Canvas
-        # แก้ไข: เรียกใช้ self.cfg.COLOR_BACKGROUND
+        # แก้ไข: เปลี่ยน color=self.cfg.COLOR_BG_MAIN เป็น self.cfg.COLOR_BACKGROUND
         img = Image.new('RGBA', (self.cfg.IMG_WIDTH, canvas_height), color=self.cfg.COLOR_BACKGROUND)
         draw = ImageDraw.Draw(img)
         
@@ -745,10 +745,12 @@ class GraphicsEngine:
             bar_height = 16
             bar_width = 580
             # Draw background track
+            # แก้ไข: เปลี่ยน fill=self.cfg.COLOR_BG_MAIN เป็น self.cfg.COLOR_BACKGROUND
             draw.rounded_rectangle(
                 [(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + bar_width, Y_POS_PROGRESS_BAR + bar_height)],
-                radius=8, fill=self.cfg.COLOR_BG_MAIN
+                radius=8, fill=self.cfg.COLOR_BACKGROUND
             )
+            
             # Draw fill based on progress
             if progress_pct > 0:
                 fill_width = int(bar_width * progress_pct)
