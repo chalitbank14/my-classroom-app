@@ -568,7 +568,7 @@ class GraphicsEngine:
         # This is crucial for predictable stacking of Thai text.
         draw.text((x, y), text, font=font, fill=color, anchor=anchor)
 
-    def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manager: RankManager) -> bytes:
+def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manager: RankManager) -> bytes:
         """
         Orchestrates the entire image generation process.
         Uses explicit vertical spacing to solve Thai typography overlaps.
@@ -581,6 +581,7 @@ class GraphicsEngine:
         
         # 2. Calculate Canvas Dimensions
         total_rows = len(leaderboard_data)
+        # FIX: Define canvas_height clearly
         canvas_height = (
             self.cfg.IMG_HEADER_HEIGHT + 
             (total_rows * self.cfg.IMG_ROW_HEIGHT) + 
@@ -588,42 +589,32 @@ class GraphicsEngine:
         )
         
         # 3. Initialize Canvas
-        # Use RGBA for potential transparency features, though saving as PNG solid.
         img = Image.new('RGBA', (self.cfg.IMG_WIDTH, canvas_height), color=self.cfg.COLOR_BG_MAIN)
         draw = ImageDraw.Draw(img)
         
         # ==========================================================================
         # HEADER SECTION Rendering
         # ==========================================================================
-        # Background Header
         draw.rectangle([(0, 0), (self.cfg.IMG_WIDTH, self.cfg.IMG_HEADER_HEIGHT)], fill=self.cfg.COLOR_BRAND_PRIMARY)
-        
-        # Decorative Abstract Shapes
         draw.ellipse([(900, -150), (1500, 450)], fill=self.cfg.COLOR_BRAND_SECONDARY)
         draw.ellipse([(-100, 250), (500, 850)], fill=self.cfg.COLOR_BRAND_SECONDARY)
         
-        # Header Typography
         center_x = self.cfg.IMG_WIDTH // 2
         
-        # Trophy Icon (Text fallback if image icon not used)
         f_icon = self._get_font(self.cfg.FONT_PRIMARY_REG, 180)
         draw.text((center_x, 220), "🏆", font=f_icon, fill="white", anchor="mm")
         
-        # Main Title
         f_title = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 60)
         draw.text((center_x, 380), "CLASSROOM LEADERBOARD", font=f_title, fill=self.cfg.COLOR_BRAND_ACCENT, anchor="mm")
         
-        # Room Name (Large)
         f_room = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 150)
         draw.text((center_x, 550), room_name, font=f_room, fill="white", anchor="mm")
 
         # ==========================================================================
         # LEADERBOARD ROWS Rendering
         # ==========================================================================
-        # Starting Y position for the first card based on config
         current_y_cursor = self.cfg.IMG_HEADER_HEIGHT + 50
         
-        # Pre-fetch fonts used repeatedly in loop
         f_rank_num = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 85)
         f_score_val = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 110)
         f_score_lbl = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 45)
@@ -632,144 +623,79 @@ class GraphicsEngine:
         f_privilege = self._get_font(self.cfg.FONT_PRIMARY_REG, 36)
 
         for i, row in leaderboard_data.iterrows():
-            # A. Resolve Row Data
             xp = row['XP']
             rank_def = rank_manager.get_rank_by_xp(xp)
             progress_pct, _ = rank_manager.calculate_progress_to_next(xp)
             
-            # Determine Theme Colors
             rank_idx = i if i < 3 else "default"
             theme = self.cfg.RANK_THEMES[rank_idx]
             rank_color_hex = theme["hex"]
-            
             score_color = self.cfg.COLOR_SCORE_NEGATIVE if xp < 0 else self.cfg.COLOR_SCORE_POSITIVE
 
-            # B. Card Layout Definitions
             card_x_start = self.cfg.IMG_PADDING_X
             card_width = self.cfg.IMG_WIDTH - (self.cfg.IMG_PADDING_X * 2)
-            # Card height is row height minus gaps between cards
             card_height = self.cfg.IMG_ROW_HEIGHT - 40 
             card_y_start = current_y_cursor
             card_y_end = card_y_start + card_height
             
-            # C. Draw Card Background & Shadow
-            # Shadow layer (offset slightly)
-            draw.rounded_rectangle(
-                [(card_x_start + 8, card_y_start + 10), (card_x_start + card_width + 8, card_y_end + 10)],
-                radius=self.cfg.IMG_CARD_RADIUS, fill=self.cfg.COLOR_CARD_SHADOW
-            )
-            # Main surface layer
-            draw.rounded_rectangle(
-                [(card_x_start, card_y_start), (card_x_start + card_width, card_y_end)],
-                radius=self.cfg.IMG_CARD_RADIUS, fill=self.cfg.COLOR_CARD_SURFACE
-            )
+            # Card Body & Shadow
+            draw.rounded_rectangle([(card_x_start + 8, card_y_start + 10), (card_x_start + card_width + 8, card_y_end + 10)], radius=self.cfg.IMG_CARD_RADIUS, fill=self.cfg.COLOR_CARD_SHADOW)
+            draw.rounded_rectangle([(card_x_start, card_y_start), (card_x_start + card_width, card_y_end)], radius=self.cfg.IMG_CARD_RADIUS, fill=self.cfg.COLOR_CARD_SURFACE)
 
-            # --- COLUMN 1: Rank Position Indicator (Left) ---
+            # Col 1: Rank Circle
             circle_center_x = card_x_start + 120
             circle_center_y = card_y_start + (card_height // 2)
-            circle_radius = 75
-            
-            # Draw colored circle
-            draw.ellipse(
-                [(circle_center_x - circle_radius, circle_center_y - circle_radius),
-                 (circle_center_x + circle_radius, circle_center_y + circle_radius)],
-                fill=rank_color_hex
-            )
-            # Draw rank number
+            draw.ellipse([(circle_center_x - 75, circle_center_y - 75), (circle_center_x + 75, circle_center_y + 75)], fill=rank_color_hex)
             draw.text((circle_center_x, circle_center_y), str(i + 1), font=f_rank_num, fill="white", anchor="mm")
 
-            # --- COLUMN 2: Group Details & Status (Middle) ---
-            # This is the critical section for Thai typography spacing.
-            # We use explicit Y-offsets from the card top for each element.
-            
+            # Col 2: Info (Explicit Spacing)
             content_x_start = card_x_start + 260
-            content_max_width = 650 # Leave room for score on the right
+            content_max_width = 650
             
-            # Define explicit vertical grid relative to card_y_start
-            # Spacing is generous to accommodate tall vowels (สระบน/วรรณยุกต์)
             Y_POS_NAME = card_y_start + 60
             Y_POS_MEMBERS = Y_POS_NAME + 75
             Y_POS_PROGRESS_BAR = Y_POS_MEMBERS + 60
-            # Large gap before rank info to ensure separation
             Y_POS_RANK_TITLE = Y_POS_PROGRESS_BAR + 55 
-            # Gap between title and description
             Y_POS_PRIVILEGE = Y_POS_RANK_TITLE + 55 
 
-            # 2.1 Group Name (Auto-fit, Bold)
-            self._draw_text_with_autofit(
-                draw, str(row['GroupName']),
-                content_x_start, Y_POS_NAME, content_max_width,
-                self.cfg.FONT_PRIMARY_BOLD, 80, self.cfg.COLOR_TEXT_PRIMARY, anchor="lt"
-            )
-
-            # 2.2 Members List (Truncated if too long)
+            # Name & Members
+            self._draw_text_with_autofit(draw, str(row['GroupName']), content_x_start, Y_POS_NAME, content_max_width, self.cfg.FONT_PRIMARY_BOLD, 80, self.cfg.COLOR_TEXT_PRIMARY, anchor="lt")
+            
             members_txt = self._clean_text_for_render(str(row['Members']))
-            if len(members_txt) > 65:
-                members_txt = members_txt[:62] + "..."
+            if len(members_txt) > 65: members_txt = members_txt[:62] + "..."
             draw.text((content_x_start, Y_POS_MEMBERS), members_txt, font=f_members, fill=self.cfg.COLOR_TEXT_SECONDARY, anchor="lt")
 
-            # 2.3 Progress Bar
-            bar_height = 16
-            bar_width = 580
-            # Draw background track
-            draw.rounded_rectangle(
-                [(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + bar_width, Y_POS_PROGRESS_BAR + bar_height)],
-                radius=8, fill=self.cfg.COLOR_BG_MAIN
-            )
-            # Draw fill based on progress
+            # Progress Bar
+            bar_w = 580
+            draw.rounded_rectangle([(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + bar_w, Y_POS_PROGRESS_BAR + 16)], radius=8, fill=self.cfg.COLOR_BG_MAIN)
             if progress_pct > 0:
-                fill_width = int(bar_width * progress_pct)
-                # Ensure minimum visibility if progress > 0
-                fill_width = max(fill_width, 20) if progress_pct > 0.01 else fill_width
-                draw.rounded_rectangle(
-                    [(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + fill_width, Y_POS_PROGRESS_BAR + bar_height)],
-                    radius=8, fill=rank_def.color
-                )
+                fill_w = max(int(bar_w * progress_pct), 20) if progress_pct > 0.01 else int(bar_w * progress_pct)
+                draw.rounded_rectangle([(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + fill_w, Y_POS_PROGRESS_BAR + 16)], radius=8, fill=rank_def.color)
 
-            # 2.4 Rank Title (Colored based on rank)
+            # Rank & Privilege
             draw.text((content_x_start, Y_POS_RANK_TITLE), rank_def.th_name, font=f_rank_title, fill=rank_def.color, anchor="lt")
+            self._draw_text_with_autofit(draw, rank_def.description, content_x_start, Y_POS_PRIVILEGE, content_max_width, self.cfg.FONT_PRIMARY_REG, 40, self.cfg.COLOR_TEXT_SECONDARY, anchor="lt")
 
-            # 2.5 Privilege Description (Grey, Auto-fit)
-            # Important: Use the clean Thai description from RankDefinition
-            privilege_txt = rank_def.description
-            self._draw_text_with_autofit(
-                draw, privilege_txt,
-                content_x_start, Y_POS_PRIVILEGE, content_max_width,
-                self.cfg.FONT_PRIMARY_REG, 40, self.cfg.COLOR_TEXT_SECONDARY, anchor="lt"
-            )
-
-            # --- COLUMN 3: XP Score (Right Aligned) ---
+            # Col 3: Score
             score_x_anchor = self.cfg.IMG_WIDTH - self.cfg.IMG_PADDING_X - 40
-            # Center score block vertically within the card
             score_y_center = card_y_start + (card_height // 2)
-
-            # Draw Score Value
-            # Using 'rs' (Right Baseline) anchor, adjusted up slightly
             draw.text((score_x_anchor, score_y_center - 10), f"{xp}", font=f_score_val, fill=score_color, anchor="rs")
-            # Draw "XP" Label below value
             draw.text((score_x_anchor, score_y_center + 50), "XP", font=f_score_lbl, fill=self.cfg.COLOR_TEXT_MUTED, anchor="rs")
 
-            # D. Advance Cursor for Next Row
             current_y_cursor += self.cfg.IMG_ROW_HEIGHT
 
         # ==========================================================================
         # FOOTER SECTION Rendering
         # ==========================================================================
-        footer_y_center = total_height - (self.cfg.IMG_FOOTER_HEIGHT // 2)
+        # FIX: Use canvas_height variable
+        footer_y_center = canvas_height - (self.cfg.IMG_FOOTER_HEIGHT // 2)
         f_footer = self._get_font(self.cfg.FONT_PRIMARY_REG, 38)
         timestamp_str = datetime.now().strftime('%d/%m/%Y %H:%M')
         footer_text = f"Generated by {self.cfg.APP_NAME} • {timestamp_str}"
         
         draw.text((self.cfg.IMG_WIDTH // 2, footer_y_center), footer_text, font=f_footer, fill=self.cfg.COLOR_TEXT_MUTED, anchor="mm")
 
-        # 4. Finalize Image
-        # Convert RGBA to RGB for PNG saving (removes alpha channel)
         img_final = img.convert('RGB')
-        
-        end_time = time.time()
-        logger.info(f"Image generation completed in {end_time - start_time:.2f} seconds.")
-        
-        # Save to buffer
         buf = io.BytesIO()
         img_final.save(buf, format='PNG', optimize=True)
         buf.seek(0)
@@ -910,7 +836,7 @@ class UIManager:
             </style>
         """, unsafe_allow_html=True)
 
-    def render_sidebar(self) -> str:
+def render_sidebar(self) -> str:
         """Renders the sidebar and returns the selected classroom."""
         with st.sidebar:
             st.image("https://cdn-icons-png.flaticon.com/512/4738/4738983.png", width=60)
@@ -919,10 +845,10 @@ class UIManager:
             st.divider()
             
             st.subheader("🏫 Classroom Context")
-            # Add your actual classroom lists here
+            # FIX: Removed ม.1/3 and ม.1/4
             selected_room = st.selectbox(
                 "Select Active Class",
-                ["ม.1/1", "ม.1/2", "ม.1/3", "ม.1/4", "ม.1/10"],
+                ["ม.1/1", "ม.1/2", "ม.1/10"],
                 index=0,
                 help="Choose the classroom you want to manage."
             )
