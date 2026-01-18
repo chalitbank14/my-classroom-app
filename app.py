@@ -1,18 +1,17 @@
 """
-Classroom OS: Enterprise Platinum Edition
-Version: 10.0.0 (Stable Release)
+Classroom OS: Enterprise Titanium Edition
+Version: 10.1.0 (Stable Release - Hotfix NameError)
 Author: AI Development Team
 Date: 2026-01-20
 
 Description:
 The definitive, error-free edition of the Classroom OS platform. 
-Designed with strict OOP architecture to prevent AttributeErrors, NameErrors, and IndentationErrors.
+Designed with strict OOP architecture.
 
-PATCH NOTES (v10.0.0):
-- [FIXED] Critical AttributeError: 'SystemConfig' object has no attribute 'COLOR_BACKGROUND'.
-- [FIXED] Variable naming consistency across UI and Graphics modules.
-- [RESTORED] Full Management Suite (Create, Edit Name, Edit Members, Delete, Power Edit).
-- [OPTIMIZED] Thai Typography Engine with 'True Bounding Box' calculation.
+PATCH NOTES (v10.1.0):
+- [FIXED] NameError: name 'BadgeSystem' is not defined.
+- [FIXED] Unified GamificationEngine to handle both Ranks and Badges.
+- [FIXED] Power Edit function signature updated to match the new engine.
 """
 
 import streamlit as st
@@ -49,7 +48,7 @@ class SystemConfig:
     """
     # Metadata
     APP_NAME = "Classroom OS"
-    APP_VERSION = "10.0.0-Platinum"
+    APP_VERSION = "10.1.0-Titanium"
     ORGANIZATION = "Acme Education Systems"
 
     # Database
@@ -60,7 +59,7 @@ class SystemConfig:
     # Graphic Engine (High-Res Thai Support)
     IMG_WIDTH = 1400
     IMG_HEADER_HEIGHT = 750
-    IMG_ROW_HEIGHT = 600  # Extra height for Thai vowels to prevent clipping
+    IMG_ROW_HEIGHT = 600  # Extra height for Thai vowels
     IMG_FOOTER_HEIGHT = 180
     IMG_PADDING = 50
     IMG_CARD_RADIUS = 40
@@ -69,12 +68,12 @@ class SystemConfig:
     FONT_BOLD = "Sarabun-Bold.ttf"
     FONT_REGULAR = "Sarabun-Regular.ttf"
 
-    # Theme Colors (Fixed Variable Names)
+    # Theme Colors
     COLOR_PRIMARY = "#4338CA"      # Indigo 700
     COLOR_SECONDARY = "#3730A3"    # Indigo 800
     COLOR_ACCENT = "#A5B4FC"       # Indigo 200
     
-    # Renamed to match UIManager calls
+    # Matching variable names for UI usage
     COLOR_BACKGROUND = "#F1F5F9"   # Slate 100 
     COLOR_SURFACE = "#FFFFFF"      # White
     COLOR_BORDER = "#E2E8F0"       # Slate 200
@@ -290,8 +289,11 @@ class DatabaseAdapter:
         current_df.at[idx, 'LastUpdated'] = datetime.now().strftime("%Y-%m-%d %H:%M")
         return self.commit(current_df)
 
-    def power_edit_history(self, room: str, group_name: str, new_history_df: pd.DataFrame, current_df: pd.DataFrame, badge_sys: BadgeSystem) -> bool:
-        """Overwrite history completely and recalculate stats."""
+    def power_edit_history(self, room: str, group_name: str, new_history_df: pd.DataFrame, current_df: pd.DataFrame, logic_engine: GamificationEngine) -> bool:
+        """
+        Overwrite history completely and recalculate stats.
+        FIX: Updated type hint to GamificationEngine to resolve NameError.
+        """
         mask = (current_df['Room'] == room) & (current_df['GroupName'] == group_name)
         if not mask.any(): return False
         
@@ -311,7 +313,8 @@ class DatabaseAdapter:
             
         final_xp = running_balance
         hist_sorted_desc = sorted(hist_sorted_asc, key=lambda x: x.get('ts', ''), reverse=True)
-        new_badges = badge_sys.evaluate_badges(final_xp, hist_sorted_desc)
+        # Use logic_engine passed in args
+        new_badges = logic_engine.calculate_badges(final_xp, hist_sorted_desc)
         
         current_df.at[idx, 'XP'] = final_xp
         current_df.at[idx, 'HistoryLog'] = json.dumps(hist_sorted_desc, ensure_ascii=False)
@@ -372,7 +375,6 @@ class GraphicsRenderer:
             self.config.IMG_FOOTER_HEIGHT
         )
         
-        # Use COLOR_BACKGROUND here (Matched to SystemConfig)
         img = Image.new('RGBA', (self.config.IMG_WIDTH, canvas_height), self.config.COLOR_BACKGROUND)
         draw = ImageDraw.Draw(img)
         
@@ -465,7 +467,7 @@ class GraphicsRenderer:
             # Score (Right)
             score_x = self.config.IMG_WIDTH - self.config.IMG_PADDING - 50
             draw.text((score_x, cy-10), f"{xp}", font=f_score, fill=score_col, anchor="rs")
-            draw.text((score_x, cy+60), "XP", font=f_label, fill=self.config.COLOR_TEXT_MUTED, anchor="rs")
+            draw.text((score_x, cy+60), "XP", font=f_score_lbl, fill=self.config.COLOR_TEXT_MUTED, anchor="rs")
             
             curr_y += self.config.IMG_ROW_HEIGHT
             
@@ -482,7 +484,7 @@ class GraphicsRenderer:
         return buf.getvalue()
 
 # ==============================================================================
-# SECTION 7: USER INTERFACE LAYER (VIEW CONTROLLER)
+# SECTION 6: APPLICATION CONTROLLER
 # ==============================================================================
 
 class UIManager:
@@ -506,7 +508,6 @@ class UIManager:
         self._inject_css()
 
     def _inject_css(self):
-        # FIX: Access correct variable name COLOR_BACKGROUND
         st.markdown(f"""
             <style>
             @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;700&family=Prompt:wght@300;400;500;700&display=swap');
@@ -539,7 +540,7 @@ class UIManager:
     def render_sidebar(self):
         with st.sidebar:
             st.title(f"🎛️ {self.config.APP_NAME}")
-            st.caption(f"Version {self.config.APP_VERSION}")
+            st.caption(f"v{self.config.APP_VERSION}")
             st.divider()
             
             st.subheader("Select Classroom")
@@ -554,7 +555,7 @@ class UIManager:
                 st.download_button("Download File", df.to_csv(index=False).encode('utf-8'), "data.csv")
                 
             if st.button("🔄 Repair Database"):
-                if self.db.commit(pd.DataFrame(columns=self.db.COLUMNS)):
+                if self.db.commit(pd.DataFrame(columns=self.db.SCHEMA)):
                     st.success("Database repaired.")
                     
             return room
@@ -689,15 +690,11 @@ class UIManager:
     def _tab_analytics(self, room_df):
         st.header("📈 Analytics")
         if room_df.empty: return
-        
-        # KPI
         c1, c2, c3 = st.columns(3)
         c1.metric("Total XP", room_df['XP'].sum())
-        c2.metric("Average XP", int(room_df['XP'].mean()))
+        c2.metric("Avg XP", int(room_df['XP'].mean()))
         c3.metric("Top Score", room_df['XP'].max())
-        
         st.divider()
-        st.subheader("Comparison")
         st.bar_chart(room_df.set_index("GroupName")['XP'])
 
     def _tab_privileges(self):
@@ -735,7 +732,7 @@ class UIManager:
 
         st.divider()
         
-        # 2. Update (Detailed)
+        # 2. Update (Feature restored)
         st.subheader("✏️ Edit Team Details")
         st.caption("Rename teams or manage roster (move/add/remove members).")
         
@@ -781,7 +778,8 @@ class UIManager:
                 
                 edited_hist = st.data_editor(pd.DataFrame(hist_data), num_rows="dynamic", use_container_width=True)
                 if st.button("💾 Save History & Recalculate"):
-                    if self.db.power_edit_history(room, target_pe, edited_hist, all_df, self.badge_sys):
+                    # Fixed: Pass self.logic (GamificationEngine) instead of undefined self.badge_sys
+                    if self.db.power_edit_history(room, target_pe, edited_hist, all_df, self.logic):
                         st.success("History updated.")
                         st.rerun()
 
