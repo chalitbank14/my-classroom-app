@@ -152,6 +152,23 @@ class DataManager:
             self.save(pd.concat([df, pd.DataFrame([{"Room":room, "GroupName":name, "XP":0, "Members":mem, "LastUpdated":datetime.now().strftime("%Y-%m-%d %H:%M"), "HistoryLog":"[]", "Badges":"[]"}])], ignore_index=True))
             return True
         return False
+    
+    # --- ฟังก์ชันใหม่: แก้ไขชื่อและสมาชิก ---
+    def edit_group(self, room, old_name, new_name, new_members, df):
+        # เช็คชื่อซ้ำ (ถ้ามีการเปลี่ยนชื่อ)
+        if new_name != old_name and ((df['Room'] == room) & (df['GroupName'] == new_name)).any():
+            return False 
+        
+        idx = df[(df['Room'] == room) & (df['GroupName'] == old_name)].index
+        if not idx.empty:
+            i = idx[0]
+            df.at[i, 'GroupName'] = new_name
+            df.at[i, 'Members'] = new_members
+            self.save(df)
+            return True
+        return False
+    # ------------------------------------
+
     def delete(self, room, name, df): self.save(df[~((df['Room'] == room) & (df['GroupName'] == name))])
     def power_edit(self, room, name, new_h, df, engine):
         idx = df[(df['Room'] == room) & (df['GroupName'] == name)].index
@@ -347,24 +364,56 @@ with tabs[3]:
     for name, xp, col, bg, title, desc in ranks_data:
         st.markdown(f"<div class='rank-detail-card' style='border-left-color: {col};'><h3 style='color:{col}; margin:0;'>{name}</h3><span class='status-badge' style='background:{bg}; color:{col};'>{xp}</span><hr style='margin:10px 0;'><h4>{title}</h4><p>{desc}</p></div>", unsafe_allow_html=True)
 
-# TAB 5
+# TAB 5 (MANAGEMENT) - แก้ไขใหม่เพิ่มฟีเจอร์แก้ไขกลุ่ม
 with tabs[4]:
-    c1, c2 = st.columns(2)
-    with c1:
+    st.markdown("### 🛠️ จัดการข้อมูลกลุ่ม")
+    
+    # 1. สร้างกลุ่มใหม่
+    with st.expander("➕ สร้างกลุ่มใหม่ (Create Group)", expanded=False):
         with st.form("new_g"):
-            n = st.text_input("Name"); m = st.text_area("Members")
-            if st.form_submit_button("Create"): 
-                if db.create(selected_room, n, m, df): st.success("Created"); st.rerun()
-                else: st.error("Duplicate")
-    with c2:
-        d = st.selectbox("Delete", ["-"]+list(room_df['GroupName'].unique()))
-        if d!="-" and st.button("Confirm"): db.delete(selected_room, d, df); st.rerun()
-    st.write("---")
-    pe = st.selectbox("Edit History", ["-"]+list(room_df['GroupName'].unique()))
-    if pe!="-":
-        r = room_df[room_df['GroupName']==pe].iloc[0]
-        try: h = json.loads(r['HistoryLog'])
-        except: h=[]
-        ed = st.data_editor(pd.DataFrame(h), num_rows="dynamic", use_container_width=True)
-        if st.button("Save History"):
-            if db.power_edit(selected_room, pe, ed, df, be): st.success("Saved"); st.rerun()
+            n = st.text_input("ตั้งชื่อกลุ่ม")
+            m = st.text_area("รายชื่อสมาชิก")
+            if st.form_submit_button("สร้างกลุ่ม"): 
+                if db.create(selected_room, n, m, df): st.success("สร้างสำเร็จ!"); time.sleep(1); st.rerun()
+                else: st.error("ชื่อกลุ่มซ้ำกับที่มีอยู่แล้ว")
+
+    st.markdown("---")
+    
+    # 2. แก้ไข / ย้ายสมาชิก (เพิ่มใหม่)
+    st.markdown("#### ✏️ แก้ไข / ย้ายสมาชิก")
+    col_edit, col_del = st.columns([2, 1])
+    
+    with col_edit:
+        edit_target = st.selectbox("เลือกกลุ่มที่จะแก้ไข", ["-"] + list(room_df['GroupName'].unique()), key="edit_selector")
+        
+        if edit_target != "-":
+            curr_row = room_df[room_df['GroupName'] == edit_target].iloc[0]
+            with st.form("edit_form"):
+                new_n = st.text_input("แก้ไขชื่อกลุ่ม", value=curr_row['GroupName'])
+                new_m = st.text_area("แก้ไขรายชื่อสมาชิก (ย้ายเข้า-ออก)", value=curr_row['Members'], height=150)
+                
+                if st.form_submit_button("💾 บันทึกการแก้ไข"):
+                    if db.edit_group(selected_room, edit_target, new_n, new_m, df):
+                        st.success("บันทึกเรียบร้อย!"); time.sleep(1); st.rerun()
+                    else:
+                        st.error("ชื่อกลุ่มใหม่ซ้ำกับกลุ่มอื่น")
+
+    # 3. ลบกลุ่ม
+    with col_del:
+        st.error("🗑️ โซนอันตราย")
+        del_target = st.selectbox("เลือกกลุ่มที่จะลบ", ["-"] + list(room_df['GroupName'].unique()), key="del_selector")
+        if del_target != "-" and st.button("ยืนยันการลบกลุ่ม", type="primary"):
+            db.delete(selected_room, del_target, df)
+            st.rerun()
+
+    # 4. แก้ไขประวัติคะแนน
+    st.markdown("---")
+    with st.expander("⚡ แก้ไขประวัติคะแนน (Advanced)", expanded=False):
+        pe = st.selectbox("เลือกกลุ่มเพื่อแก้ประวัติ", ["-"]+list(room_df['GroupName'].unique()), key="pe_selector")
+        if pe!="-":
+            r = room_df[room_df['GroupName']==pe].iloc[0]
+            try: h = json.loads(r['HistoryLog'])
+            except: h=[]
+            ed = st.data_editor(pd.DataFrame(h), num_rows="dynamic", use_container_width=True)
+            if st.button("บันทึกประวัติใหม่"):
+                if db.power_edit(selected_room, pe, ed, df, be): st.success("Saved"); st.rerun()
