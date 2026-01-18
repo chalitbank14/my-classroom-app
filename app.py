@@ -1136,26 +1136,56 @@ class ClassroomOSApp:
         st.header("📈 Analytics")
         if not teams: return
         
-        total_xp = sum(t.xp for t in teams)
-        avg_xp = int(total_xp / len(teams))
-        max_xp = max(t.xp for t in teams)
+        # 1. Prepare & Sanitize Data for Charting
+        data = []
+        for t in teams:
+            # Force XP to be an integer (default 0 if error)
+            try:
+                safe_xp = int(t.xp)
+            except:
+                safe_xp = 0
+            
+            data.append({"Team": str(t.name), "XP": safe_xp})
+            
+        df = pd.DataFrame(data)
+        
+        # Calculate Stats based on sanitized data
+        total_xp = df['XP'].sum()
+        avg_xp = int(df['XP'].mean()) if not df.empty else 0
+        max_xp = df['XP'].max() if not df.empty else 0
         
         c1, c2, c3 = st.columns(3)
-        c1.metric("Total Classroom XP", total_xp)
-        c2.metric("Average XP", avg_xp)
-        c3.metric("Highest Score", max_xp)
+        c1.metric("Total Classroom XP", f"{total_xp:,}")
+        c2.metric("Average XP", f"{avg_xp:,}")
+        c3.metric("Highest Score", f"{max_xp:,}")
         
         st.divider()
         st.subheader("Team Performance Comparison")
         
-        df = pd.DataFrame([{"Team": t.name, "XP": t.xp} for t in teams])
-        chart = alt.Chart(df).mark_bar().encode(
-            x=alt.X('Team', sort='-y'),
-            y='XP',
-            color=alt.Color('XP', scale={'scheme': 'viridis'}),
-            tooltip=['Team', 'XP']
-        ).properties(use_container_width=True)
-        st.altair_chart(chart, use_container_width=True)
+        if not df.empty:
+            # Create Chart with explicit typing
+            chart = alt.Chart(df).mark_bar().encode(
+                # Sort bars descending
+                x=alt.X('Team:N', sort='-y', title='Team Name'),
+                # Ensure Y is quantitative (Q)
+                y=alt.Y('XP:Q', title='Total XP'),
+                # Color based on score
+                color=alt.Color('XP:Q', scale={'scheme': 'viridis'}, legend=None),
+                tooltip=[
+                    alt.Tooltip('Team', title='Team Name'),
+                    alt.Tooltip('XP', title='Current XP', format=',')
+                ]
+            ).properties(
+                use_container_width=True,
+                height=400
+            ).configure_axis(
+                labelFontSize=12,
+                titleFontSize=14
+            )
+            
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info("No data available for visualization.")
 
     def _render_privileges_tab(self):
         st.header("ℹ️ Rank Privileges")
