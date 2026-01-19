@@ -674,8 +674,8 @@ class GraphicsEngine:
 
     def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manager: RankManager) -> bytes:
         """
-        Orchestrates the entire image generation process with DYNAMIC CARD HEIGHTS.
-        Cards now resize to fit their content, eliminating excess vertical space.
+        Orchestrates the entire image generation process.
+        [UPDATED] Tightened vertical spacing and adjusted fonts for better Thai diacritic rendering.
         """
         logger.info(f"Starting image generation for room: {room_name}")
         start_time = time.time()
@@ -684,41 +684,41 @@ class GraphicsEngine:
         leaderboard_data = df.sort_values("XP", ascending=False).reset_index(drop=True)
         total_rows = len(leaderboard_data)
 
-        # Configuration for Layout (Adjustable Gaps & Padding)
-        CARD_PADDING_TOP = 60
-        CARD_PADDING_BOTTOM = 60  # ระยะห่างจากบรรทัดสุดท้ายถึงขอบล่างการ์ด
-        CARD_GAP_Y = 40           # ระยะห่างระหว่างการ์ดแต่ละใบ
+        # =================================================================================
+        # [CONFIG] การตั้งค่าระยะห่าง (แก้ให้ชิดกันมากขึ้น ตรงนี้ครับ)
+        # =================================================================================
+        CARD_PADDING_TOP = 50     # ขอบบนการ์ด
+        CARD_PADDING_BOTTOM = 35  # ขอบล่างการ์ด (ให้ชิดกับบรรทัดสุดท้ายมากขึ้น)
+        CARD_GAP_Y = 25           # ระยะห่างระหว่างการ์ดแต่ละใบ
 
-        GAP_NAME_MEMBERS = 50     # ระยะห่าง ชื่อกลุ่ม -> สมาชิก
-        GAP_MEMBERS_BAR = 60      # ระยะห่าง สมาชิก -> หลอดพลัง
-        GAP_BAR_TITLE = 70        # ระยะห่าง หลอดพลัง -> ชื่อยศ (แบ่งส่วน)
-        GAP_TITLE_PRIVILEGE = 40  # ระยะห่าง ชื่อยศ -> คำอธิบาย (อยู่กลุ่มเดียวกัน)
+        # ระยะห่างระหว่างบรรทัดภายในการ์ด (บีบให้แคบลงมาก)
+        GAP_NAME_MEMBERS = 15     # ชื่อกลุ่ม -> สมาชิก (ชิดมาก)
+        GAP_MEMBERS_BAR = 25      # สมาชิก -> หลอดพลัง
+        GAP_BAR_TITLE = 30        # หลอดพลัง -> ชื่อยศ
+        GAP_TITLE_PRIVILEGE = 8   # ชื่อยศ -> คำอธิบาย (ชิดกันเพราะเป็นเรื่องเดียวกัน)
 
-        # Estimated heights for text elements (based on max font sizes used)
-        H_NAME = 90
-        H_MEMBERS = 50
+        # ความสูงของพื้นที่ข้อความ (ปรับจูนให้พอดีกับฟอนต์ภาษาไทย)
+        H_NAME = 85               # เผื่อพื้นที่สูงหน่อยกันสระบนขาด
+        H_MEMBERS = 45
         H_BAR = 16
-        H_RANK_TITLE = 55
-        H_PRIVILEGE = 45 # Assuming single line for privilege
+        H_RANK_TITLE = 50
+        H_PRIVILEGE = 40
 
-        # First pass: Calculate total canvas height needed with dynamic cards
-        current_y_sim = self.cfg.IMG_HEADER_HEIGHT + 50
+        # First pass: Calculate canvas height
+        current_y_sim = self.cfg.IMG_HEADER_HEIGHT + 40
         for _ in range(total_rows):
-            # Calculate content height for one card
             content_h = CARD_PADDING_TOP + H_NAME + GAP_NAME_MEMBERS + H_MEMBERS + \
                         GAP_MEMBERS_BAR + H_BAR + GAP_BAR_TITLE + H_RANK_TITLE + \
                         GAP_TITLE_PRIVILEGE + H_PRIVILEGE + CARD_PADDING_BOTTOM
             current_y_sim += content_h + CARD_GAP_Y
             
-        canvas_height = current_y_sim + self.cfg.IMG_FOOTER_HEIGHT - CARD_GAP_Y # Remove last gap
+        canvas_height = current_y_sim + self.cfg.IMG_FOOTER_HEIGHT - CARD_GAP_Y
 
         # 2. Initialize Canvas
         img = Image.new('RGBA', (self.cfg.IMG_WIDTH, canvas_height), color=self.cfg.COLOR_BACKGROUND)
         draw = ImageDraw.Draw(img)
         
-        # ==========================================================================
-        # HEADER SECTION Rendering (No Changes Here)
-        # ==========================================================================
+        # Header Rendering
         draw.rectangle([(0, 0), (self.cfg.IMG_WIDTH, self.cfg.IMG_HEADER_HEIGHT)], fill=self.cfg.COLOR_BRAND_PRIMARY)
         draw.ellipse([(900, -150), (1500, 450)], fill=self.cfg.COLOR_BRAND_SECONDARY)
         draw.ellipse([(-100, 250), (500, 850)], fill=self.cfg.COLOR_BRAND_SECONDARY)
@@ -729,12 +729,10 @@ class GraphicsEngine:
         f_room = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 150)
         draw.text((center_x, 550), room_name, font=f_room, fill="white", anchor="mm")
 
-        # ==========================================================================
-        # LEADERBOARD ROWS Rendering (Dynamic Layout)
-        # ==========================================================================
-        current_y_cursor = self.cfg.IMG_HEADER_HEIGHT + 50
+        # Rows Rendering
+        current_y_cursor = self.cfg.IMG_HEADER_HEIGHT + 40
         
-        # Pre-fetch fonts
+        # Fonts Loading
         f_rank_num = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 85)
         f_score_val = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 110)
         f_score_lbl = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 45)
@@ -742,7 +740,6 @@ class GraphicsEngine:
         f_rank_title = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 48)
 
         for i, row in leaderboard_data.iterrows():
-            # A. Resolve Row Data
             xp = row['XP']
             rank_def = rank_manager.get_rank_by_xp(xp)
             progress_pct, _ = rank_manager.calculate_progress_to_next(xp)
@@ -752,34 +749,28 @@ class GraphicsEngine:
             rank_color_hex = theme["hex"]
             score_color = self.cfg.COLOR_SCORE_NEGATIVE if xp < 0 else self.cfg.COLOR_SCORE_POSITIVE
 
-            # B. Dynamic Layout Calculation for this Card
+            # Layout Calc
             card_x_start = self.cfg.IMG_PADDING_X
             card_width = self.cfg.IMG_WIDTH - (self.cfg.IMG_PADDING_X * 2)
             card_y_start = current_y_cursor
 
-            # Calculate Y positions based on cumulative content height
+            # Y Positions (Cumulative)
             content_y_rel = CARD_PADDING_TOP
-            
             Y_POS_NAME = card_y_start + content_y_rel
             content_y_rel += H_NAME + GAP_NAME_MEMBERS
-            
             Y_POS_MEMBERS = card_y_start + content_y_rel
             content_y_rel += H_MEMBERS + GAP_MEMBERS_BAR
-            
             Y_POS_PROGRESS_BAR = card_y_start + content_y_rel
             content_y_rel += H_BAR + GAP_BAR_TITLE
-            
             Y_POS_RANK_TITLE = card_y_start + content_y_rel
             content_y_rel += H_RANK_TITLE + GAP_TITLE_PRIVILEGE
-            
             Y_POS_PRIVILEGE = card_y_start + content_y_rel
-            content_y_rel += H_PRIVILEGE # End of content content
+            content_y_rel += H_PRIVILEGE
 
-            # Total card height is end of content + bottom padding
             card_height = content_y_rel + CARD_PADDING_BOTTOM
             card_y_end = card_y_start + card_height
             
-            # C. Draw Card Background & Shadow
+            # Draw Card
             draw.rounded_rectangle(
                 [(card_x_start + 8, card_y_start + 10), (card_x_start + card_width, card_y_end + 10)],
                 radius=self.cfg.IMG_CARD_RADIUS, fill=self.cfg.COLOR_CARD_SHADOW
@@ -789,10 +780,9 @@ class GraphicsEngine:
                 radius=self.cfg.IMG_CARD_RADIUS, fill=self.cfg.COLOR_CARD_SURFACE
             )
 
-            # --- COLUMN 1: Rank Position / Sticker (Centered Vertically) ---
+            # --- Col 1: Rank ---
             sticker_cx = card_x_start + 120
             sticker_cy = card_y_start + (card_height // 2)
-            
             if i < 3:
                 self._draw_vector_medal(draw, sticker_cx, sticker_cy, rank_color_hex, i)
             else:
@@ -800,30 +790,30 @@ class GraphicsEngine:
                 draw.ellipse([(sticker_cx - 70, sticker_cy - 70), (sticker_cx + 70, sticker_cy + 70)], fill=rank_color_hex)
             draw.text((sticker_cx, sticker_cy), str(i + 1), font=f_rank_num, fill="white", anchor="mm")
 
-            # --- COLUMN 2: Group Details & Status (Using Calculated Y Positions) ---
+            # --- Col 2: Info (Updated for Thai Typography) ---
             content_x_start = card_x_start + 260
             content_max_width = 650
             
             # 2.1 Group Name
+            # [แก้ปัญหา] ลดขนาดฟอนต์ลงจาก 80 เหลือ 75 เพื่อลดปัญหาสระซ้อนทับกัน
             self._draw_text_with_autofit(
                 draw, str(row['GroupName']),
                 content_x_start, Y_POS_NAME, content_max_width,
-                self.cfg.FONT_PRIMARY_BOLD, 80, self.cfg.COLOR_TEXT_PRIMARY, anchor="lt"
+                self.cfg.FONT_PRIMARY_BOLD, 75, self.cfg.COLOR_TEXT_PRIMARY, anchor="lt"
             )
 
-            # 2.2 Members List
+            # 2.2 Members
             members_txt = self._clean_text_for_render(str(row['Members']))
             if len(members_txt) > 65: members_txt = members_txt[:62] + "..."
             draw.text((content_x_start, Y_POS_MEMBERS), members_txt, font=f_members, fill=self.cfg.COLOR_TEXT_SECONDARY, anchor="lt")
 
             # 2.3 Progress Bar
-            bar_width = 580
             draw.rounded_rectangle(
-                [(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + bar_width, Y_POS_PROGRESS_BAR + H_BAR)],
+                [(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + 580, Y_POS_PROGRESS_BAR + H_BAR)],
                 radius=8, fill=self.cfg.COLOR_BACKGROUND
             )
             if progress_pct > 0:
-                fill_width = max(int(bar_width * progress_pct), 20) if progress_pct > 0.01 else int(bar_width * progress_pct)
+                fill_width = max(int(580 * progress_pct), 20) if progress_pct > 0.01 else int(580 * progress_pct)
                 draw.rounded_rectangle(
                     [(content_x_start, Y_POS_PROGRESS_BAR), (content_x_start + fill_width, Y_POS_PROGRESS_BAR + H_BAR)],
                     radius=8, fill=rank_def.color
@@ -832,7 +822,7 @@ class GraphicsEngine:
             # 2.4 Rank Title
             draw.text((content_x_start, Y_POS_RANK_TITLE), rank_def.th_name, font=f_rank_title, fill=rank_def.color, anchor="lt")
 
-            # 2.5 Privilege Description
+            # 2.5 Privilege
             privilege_txt = rank_def.description
             self._draw_text_with_autofit(
                 draw, privilege_txt,
@@ -840,25 +830,22 @@ class GraphicsEngine:
                 self.cfg.FONT_PRIMARY_REG, 40, self.cfg.COLOR_TEXT_SECONDARY, anchor="lt"
             )
 
-            # --- COLUMN 3: XP Score (Centered Vertically) ---
+            # --- Col 3: Score ---
             score_x_anchor = self.cfg.IMG_WIDTH - self.cfg.IMG_PADDING_X - 40
             score_y_center = card_y_start + (card_height // 2)
             draw.text((score_x_anchor, score_y_center - 10), f"{xp}", font=f_score_val, fill=score_color, anchor="rs")
             draw.text((score_x_anchor, score_y_center + 50), "XP", font=f_score_lbl, fill=self.cfg.COLOR_TEXT_MUTED, anchor="rs")
 
-            # D. Advance Cursor for Next Row
             current_y_cursor += card_height + CARD_GAP_Y
 
-        # ==========================================================================
-        # FOOTER SECTION Rendering
-        # ==========================================================================
+        # Footer
         footer_y_center = canvas_height - (self.cfg.IMG_FOOTER_HEIGHT // 2)
         f_footer = self._get_font(self.cfg.FONT_PRIMARY_REG, 38)
         timestamp_str = datetime.now().strftime('%d/%m/%Y %H:%M')
         footer_text = f"Generated by {self.cfg.APP_NAME} • {timestamp_str}"
         draw.text((self.cfg.IMG_WIDTH // 2, footer_y_center), footer_text, font=f_footer, fill=self.cfg.COLOR_TEXT_MUTED, anchor="mm")
 
-        # 4. Finalize Image
+        # Save
         img_final = img.convert('RGB')
         end_time = time.time()
         logger.info(f"Image generation completed in {end_time - start_time:.2f} seconds.")
