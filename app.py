@@ -321,14 +321,15 @@ class GoogleSheetsRepository:
     def fetch_all_data(self) -> pd.DataFrame:
         """Retrieves all data from the main worksheet."""
         try:
-            # ttl=0 ensures no caching for fresh data
-            df = self.conn.read(worksheet=self.cfg.DB_MAIN_WORKSHEET, ttl=self.cfg.DB_CACHE_TTL)
-            sanitized_df = self._sanitize_dataframe(df)
-            logger.info(f"Fetched {len(sanitized_df)} records from database.")
-            return sanitized_df
+            # เพิ่ม Spinner เพื่อบอก user ว่ากำลังโหลด
+            with st.spinner("กำลังเชื่อมต่อฐานข้อมูล Google Sheets..."):
+                # ttl=0 ensures no caching for fresh data
+                df = self.conn.read(worksheet=self.cfg.DB_MAIN_WORKSHEET, ttl=self.cfg.DB_CACHE_TTL)
+                sanitized_df = self._sanitize_dataframe(df)
+                logger.info(f"Fetched {len(sanitized_df)} records from database.")
+                return sanitized_df
         except Exception as e:
             logger.error(f"Error fetching data: {e}")
-            # Return empty DataFrame with correct schema on failure
             return pd.DataFrame(columns=self.SCHEMA)
 
     def commit_data(self, df: pd.DataFrame) -> bool:
