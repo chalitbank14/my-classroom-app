@@ -172,41 +172,48 @@ class RankManager:
         """
         Determines the appropriate rank for a given XP value.
         """
-        if xp < 0:
+        # แก้ไข: ต้องติดลบ 300 หรือต่ำกว่า ถึงจะได้ยศทัณฑ์บน
+        if xp <= -300:
             return self._probation_rank
         
         for rank in self._ranks:
-            # Skip probation in normal check, find first rank where XP is sufficient
             if rank.id != "PROBATION" and xp >= rank.min_xp:
                 return rank
                 
-        return self._default_rank # Should not happen with correct config
+        return self._default_rank # ถ้าคะแนน -1 ถึง -299 จะยังเป็น Intern (เด็กฝึกงาน)
 
     def calculate_progress_to_next(self, xp: int) -> Tuple[float, str]:
         """
         Calculates the percentage progress towards the next rank tier.
-        Returns: (percentage as float 0.0-1.0, label string)
         """
-        if xp < 0:
-            return 0.0, "Status: Critical"
+        # ถ้าติดลบหนักเกิน -300 ให้ขึ้นสถานะ Critical
+        if xp <= -300:
+            return 0.0, "Status: Critical (Probation)"
         
         current_rank = self.get_rank_by_xp(xp)
         
-        # Find index of current rank
         try:
             idx = self._ranks.index(current_rank)
         except ValueError:
              return 0.0, "Error"
 
-        # If not the highest rank (index 0)
         if idx > 0:
             next_rank = self._ranks[idx - 1]
             target_xp = next_rank.min_xp
             
-            # Prevent division by zero if target is 0 (though unlikely for higher ranks)
+            # แก้ไข: ถ้าคะแนนติดลบ (เช่น -200) แต่อยู่ยศ Intern (0) 
+            # เราจะคำนวณเทียบกับ 0 ไม่ได้ ต้องจัดการให้หลอดเป็น 0% ไปเลย
+            if xp < 0 and current_rank.min_xp == 0:
+                 return 0.0, f"Recovering... ({xp} XP)"
+
             denominator = target_xp if target_xp > 0 else 100 
             
-            progress_pct = min(1.0, xp / denominator)
+            # สูตรคำนวณปกติ
+            raw_pct = xp / denominator
+            
+            # แก้ไข: บังคับค่าให้อยู่ระหว่าง 0.0 ถึง 1.0 เสมอ (กันกราฟพัง)
+            progress_pct = max(0.0, min(1.0, raw_pct))
+            
             return progress_pct, f"{int(progress_pct * 100)}% to {next_rank.th_name}"
             
         return 1.0, "MAX LEVEL REACHED"
