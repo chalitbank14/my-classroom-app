@@ -373,6 +373,54 @@ class GoogleSheetsRepository:
         }
         updated_df = pd.concat([current_df, pd.DataFrame([new_record])], ignore_index=True)
         return self.commit_data(updated_df)
+    
+    # [CHECK] วางต่อจากฟังก์ชัน commit_data และต้องย่อหน้าให้เท่ากัน (4 เคาะ)
+    
+    def create_group_record(self, room: str, name: str, members: str, current_df: pd.DataFrame) -> bool:
+        """Creates a new group if the name doesn't exist in the room."""
+        # เช็คชื่อซ้ำในห้องเดียวกัน
+        duplicate_mask = (current_df['Room'] == room) & (current_df['GroupName'] == name)
+        if duplicate_mask.any():
+            return False
+        
+        new_record = {
+            "Room": room,
+            "GroupName": name,
+            "XP": 0,
+            "Members": members,
+            "LastUpdated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "HistoryLog": "[]",
+            "Badges": "[]"
+        }
+        updated_df = pd.concat([current_df, pd.DataFrame([new_record])], ignore_index=True)
+        return self.commit_data(updated_df)
+
+    def update_group_record(self, room: str, old_name: str, new_name: str, new_members: str, current_df: pd.DataFrame) -> bool:
+        """Updates group name and members."""
+        # ถ้าเปลี่ยนชื่อ ต้องเช็คว่าชื่อใหม่ซ้ำไหม
+        if new_name != old_name:
+             duplicate_mask = (current_df['Room'] == room) & (current_df['GroupName'] == new_name)
+             if duplicate_mask.any():
+                 return False
+
+        # หาแถวที่จะแก้
+        target_mask = (current_df['Room'] == room) & (current_df['GroupName'] == old_name)
+        if not target_mask.any():
+             return False
+             
+        idx = current_df[target_mask].index[0]
+        current_df.at[idx, 'GroupName'] = new_name
+        current_df.at[idx, 'Members'] = new_members
+        current_df.at[idx, 'LastUpdated'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        return self.commit_data(current_df)
+
+    def delete_group_record(self, room: str, name: str, current_df: pd.DataFrame) -> bool:
+        """Soft-deletes a group by filtering it out and saving."""
+        # เก็บแถวที่ *ไม่ใช่* (ห้องนี้ และ ชื่อนี้) เอาไว้
+        keep_mask = ~((current_df['Room'] == room) & (current_df['GroupName'] == name))
+        updated_df = current_df[keep_mask]
+        return self.commit_data(updated_df)
 
     def update_group_record(self, room: str, old_name: str, new_name: str, new_members: str, current_df: pd.DataFrame) -> bool:
         """Updates group name and members."""
