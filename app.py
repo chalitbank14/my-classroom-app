@@ -675,7 +675,7 @@ class GraphicsEngine:
     def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manager: RankManager) -> bytes:
         """
         Orchestrates the entire image generation process.
-        [UPDATED] Tightened vertical spacing and adjusted fonts for better Thai diacritic rendering.
+        [FIXED] Adjusted line heights and font sizes to prevent Thai diacritic overlapping (สระจม/วรรณยุกต์ทับกัน).
         """
         logger.info(f"Starting image generation for room: {room_name}")
         start_time = time.time()
@@ -685,20 +685,21 @@ class GraphicsEngine:
         total_rows = len(leaderboard_data)
 
         # =================================================================================
-        # [CONFIG] การตั้งค่าระยะห่าง (แก้ให้ชิดกันมากขึ้น ตรงนี้ครับ)
+        # [CONFIG] การตั้งค่าระยะห่าง (ปรับจูนเพื่อแก้สระภาษาไทย)
         # =================================================================================
-        CARD_PADDING_TOP = 50     # ขอบบนการ์ด
-        CARD_PADDING_BOTTOM = 35  # ขอบล่างการ์ด (ให้ชิดกับบรรทัดสุดท้ายมากขึ้น)
-        CARD_GAP_Y = 25           # ระยะห่างระหว่างการ์ดแต่ละใบ
+        CARD_PADDING_TOP = 55     # เพิ่มขอบบนนิดหน่อย ให้วรรณยุกต์ไม่ชนขอบ
+        CARD_PADDING_BOTTOM = 35
+        CARD_GAP_Y = 25
 
-        # ระยะห่างระหว่างบรรทัดภายในการ์ด (บีบให้แคบลงมาก)
-        GAP_NAME_MEMBERS = 15     # ชื่อกลุ่ม -> สมาชิก (ชิดมาก)
-        GAP_MEMBERS_BAR = 25      # สมาชิก -> หลอดพลัง
-        GAP_BAR_TITLE = 30        # หลอดพลัง -> ชื่อยศ
-        GAP_TITLE_PRIVILEGE = 8   # ชื่อยศ -> คำอธิบาย (ชิดกันเพราะเป็นเรื่องเดียวกัน)
+        # ระยะห่างระหว่างบรรทัด (Gap)
+        GAP_NAME_MEMBERS = 10     # ลด Gap ลงอีก เพราะเราจะไปเพิ่มความสูงกล่องข้อความแทน
+        GAP_MEMBERS_BAR = 25
+        GAP_BAR_TITLE = 30
+        GAP_TITLE_PRIVILEGE = 8
 
-        # ความสูงของพื้นที่ข้อความ (ปรับจูนให้พอดีกับฟอนต์ภาษาไทย)
-        H_NAME = 85               # เผื่อพื้นที่สูงหน่อยกันสระบนขาด
+        # ความสูงของพื้นที่ข้อความ (Height Reserved)
+        # [สำคัญ] เพิ่ม H_NAME เป็น 100 เพื่อให้มีพื้นที่เหลือเฟือสำหรับ สระบน+วรรณยุกต์ (เช่น "นี้", "ตี้")
+        H_NAME = 100              
         H_MEMBERS = 45
         H_BAR = 16
         H_RANK_TITLE = 50
@@ -737,7 +738,9 @@ class GraphicsEngine:
         f_score_val = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 110)
         f_score_lbl = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 45)
         f_members = self._get_font(self.cfg.FONT_PRIMARY_REG, 42)
-        f_rank_title = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 48)
+        
+        # [สำคัญ] ลดขนาดฟอนต์ชื่อยศลงนิดหน่อย เพื่อความสวยงาม
+        f_rank_title = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 42) 
 
         for i, row in leaderboard_data.iterrows():
             xp = row['XP']
@@ -790,16 +793,16 @@ class GraphicsEngine:
                 draw.ellipse([(sticker_cx - 70, sticker_cy - 70), (sticker_cx + 70, sticker_cy + 70)], fill=rank_color_hex)
             draw.text((sticker_cx, sticker_cy), str(i + 1), font=f_rank_num, fill="white", anchor="mm")
 
-            # --- Col 2: Info (Updated for Thai Typography) ---
+            # --- Col 2: Info ---
             content_x_start = card_x_start + 260
             content_max_width = 650
             
             # 2.1 Group Name
-            # [แก้ปัญหา] ลดขนาดฟอนต์ลงจาก 80 เหลือ 75 เพื่อลดปัญหาสระซ้อนทับกัน
+            # [แก้ปัญหา] ลดขนาดฟอนต์เหลือ 65 (จุดสำคัญที่ทำให้สระไม่ขี่กัน)
             self._draw_text_with_autofit(
                 draw, str(row['GroupName']),
                 content_x_start, Y_POS_NAME, content_max_width,
-                self.cfg.FONT_PRIMARY_BOLD, 75, self.cfg.COLOR_TEXT_PRIMARY, anchor="lt"
+                self.cfg.FONT_PRIMARY_BOLD, 65, self.cfg.COLOR_TEXT_PRIMARY, anchor="lt"
             )
 
             # 2.2 Members
