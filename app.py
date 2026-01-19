@@ -153,12 +153,12 @@ class RankManager:
         # IMPORTANT: Ensure Thai descriptions are concise for UI fit.
         # แก้ไข: ลบ Emoji ออกจากชื่อยศภาษาไทย เพื่อแก้ปัญหากรอบสี่เหลี่ยม
         self._ranks: List[RankDefinition] = [
-            RankDefinition("PRESIDENT", "ประธานรุ่น", 1000, "#F59E0B", "#FEF3C7", "Immunity (ไม่ทำ 3 งาน) + Bonus 1/งาน"),
-            RankDefinition("DIRECTOR", "หัวหน้าฝ่าย", 600, "#8B5CF6", "#F3E8FF", "Workload Cut (ลดภาระงาน 50%)"),
-            RankDefinition("MANAGER", "หัวหน้าแผนก", 300, "#3B82F6", "#DBEAFE", "Second Chance (แก้ตัวได้ 1 ครั้ง/หน่วย)"),
-            RankDefinition("EMPLOYEE", "พนักงาน", 100, "#10B981", "#D1FAE5", "Time Extension (ส่งช้าได้ 2 สัปดาห์)"),
-            RankDefinition("INTERN", "เด็กฝึกงาน", 0, "#64748B", "#F1F5F9", "Check-up (สิทธิ์ให้ครูตรวจงานก่อนส่ง)"),
-            RankDefinition("PROBATION", "ทัณฑ์บน", -999999, "#EF4444", "#FEE2E2", "สถานะวิกฤต! รีบซ่อมคะแนนด่วน")
+            RankDefinition("PRESIDENT", "ประธานรุ่น", 1000, "#F59E0B", "#FEF3C7", "เลือกไม่ทํา 3 งาน ได้คะแนนเต็ม; +1 คะแนนพิเศษฟรีทุกงานที่ส่ง"),
+            RankDefinition("DIRECTOR", "หัวหน้าฝ่าย", 600, "#8B5CF6", "#F3E8FF", "ลดภาระงาน 50% ทำงานครึ่งหนึ่งก็ได้คะแนนเต็มในทุกๆงาน"),
+            RankDefinition("MANAGER", "หัวหน้าแผนก", 300, "#3B82F6", "#DBEAFE", "สอบแก้ตัวหรือทําใบงานใหม่เพื่อปรับคะแนนให้ดีขึ้น เลือกทําใหม่ได้ หน่วยละ 1 งาน"),
+            RankDefinition("EMPLOYEE", "พนักงาน", 100, "#10B981", "#D1FAE5", "ส่งช้ากว่ากำหนดได้เพิ่ม 1 สัปดาห์ โดยไม่ถูกหักคะแนน ใช้ได้ทุกงานหลังกลางภาค"),
+            RankDefinition("INTERN", "เด็กฝึกงาน", 0, "#64748B", "#F1F5F9", "ก่อนส่งใบงานสำคัญ นำให้ครู 'ตรวจทานเบื้องต้น วงจุดผิดให้กลับไปแก้ก่อนส่งจริง"),
+            RankDefinition("PROBATION", "ทัณฑ์บน", -300, "#EF4444", "#FEE2E2", "ทํางานรูปแบบออฟไลน์, เขียนใส่กระดาษ, ส่งเฉพาะตอนเจอครูเท่านั้น")
         ]
         self._probation_rank = self._ranks[-1]
         self._default_rank = self._ranks[-2] # Intern
