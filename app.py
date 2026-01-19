@@ -288,35 +288,33 @@ class GoogleSheetsRepository:
     def _sanitize_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Ensures the DataFrame conforms to the expected SCHEMA.
-        Handles missing columns, NaNs, and type casting.
+        Deep cleaning to prevent Google API 500 Errors.
         """
         if df.empty:
             return pd.DataFrame(columns=self.SCHEMA)
         
-        # Ensure all required columns exist
-        missing_cols = set(self.SCHEMA) - set(df.columns)
-        if missing_cols:
-            logger.warning(f"Found missing columns in DB: {missing_cols}. Adding them.")
-            for col in missing_cols:
+        # 1. Ensure all columns exist
+        for col in self.SCHEMA:
+            if col not in df.columns:
                 df[col] = None
 
-        # Select only required columns and drop completely empty rows
-        df = df[self.SCHEMA].copy().dropna(how='all')
+        # 2. Select only schema columns
+        df = df[self.SCHEMA].copy()
         
-        # Type coercion and null handling
-        # XP must be integer
+        # 3. Clean Data Types (Aggressive)
+        
+        # XP: Must be pure Integer (No NaNs, No Floats)
         df['XP'] = pd.to_numeric(df['XP'], errors='coerce').fillna(0).astype(int)
         
-        # JSON fields must be valid JSON strings, default to empty list "[]"
+        # JSON Fields: Must be valid strings, empty list if fail
         for col in ['HistoryLog', 'Badges']:
-            df[col] = df[col].fillna("[]").astype(str)
-            # Basic validation: check if it looks like JSON list
-            mask = ~df[col].str.startswith("[") | ~df[col].str.endswith("]")
-            df.loc[mask, col] = "[]"
+            df[col] = df[col].astype(str).replace(["None", "nan", "<NA>"], "[]")
+            # ถ้าช่องว่างๆ ให้ใส่ []
+            df.loc[df[col].str.strip() == "", col] = "[]"
 
-        # String fields default to empty string
+        # Text Fields: Must be string, no NaNs
         for col in ['Room', 'GroupName', 'Members', 'LastUpdated']:
-            df[col] = df[col].fillna("").astype(str)
+            df[col] = df[col].astype(str).replace(["None", "nan", "<NA>"], "")
 
         return df
 
@@ -334,28 +332,34 @@ class GoogleSheetsRepository:
             return pd.DataFrame(columns=self.SCHEMA)
 
     def commit_data(self, df: pd.DataFrame) -> bool:
-        """Writes the given DataFrame back to the sheet."""
-        try:
-            # Ensure data is clean before writing
-            df_to_write = self._sanitize_dataframe(df)
-            self.conn.update(worksheet=self.cfg.DB_MAIN_WORKSHEET, data=df_to_write)
-            st.cache_data.clear() # Clear Streamlit's data cache
-            logger.info("Database commit successful.")
-            return True
-        except Exception as e:
-            logger.error(f"Database commit failed: {e}", exc_info=True)
-            st.error(f"⚠️ Failed to save data: {e}")
-            return False
-
-    # --- Domain-Specific Transaction Methods ---
-
-    def create_group_record(self, room: str, name: str, members: str, current_df: pd.DataFrame) -> bool:
-        """Creates a new group if the name doesn't exist in the room."""
-        # Check for duplicate name within the same room
-        duplicate_mask = (current_df['Room'] == room) & (current_df['GroupName'] == name)
-        if duplicate_mask.any():
-            logger.warning(f"Attempted to create duplicate group '{name}' in room '{room}'.")
-            return False
+        """
+        Writes the given DataFrame back to the sheet.
+        Includes RETRY LOGIC to handle Google API 500 errors.
+        """
+        max_retries = 3
+        
+        # ทำความสะอาดข้อมูลรอบสุดท้ายก่อนส่ง
+        df_to_write = self._sanitize_dataframe(df)
+        
+        for attempt in range(max_retries):
+            try:
+                # พยายามบันทึก
+                self.conn.update(worksheet=self.cfg.DB_MAIN_WORKSHEET, data=df_to_write)
+                st.cache_data.clear() # เคลียร์ cache เพื่อให้เห็นข้อมูลใหม่ทันที
+                logger.info("Database commit successful.")
+                return True
+                
+            except Exception as e:
+                # ถ้าพัง ให้รอแป๊บแล้วลองใหม่ (Backoff strategy)
+                wait_time = (attempt + 1) * 2
+                logger.warning(f"Database commit failed (Attempt {attempt+1}/{max_retries}). Retrying in {wait_time}s... Error: {e}")
+                time.sleep(wait_time)
+                
+                # ถ้าลองครบโควต้าแล้วยังพัง ให้แจ้งเตือน user
+                if attempt == max_retries - 1:
+                    logger.error(f"Final database commit failed: {e}", exc_info=True)
+                    st.error(f"⚠️ Failed to save data (Google Server Error). Please try again in a moment. Details: {e}")
+                    return False
         
         new_record = {
             "Room": room,
