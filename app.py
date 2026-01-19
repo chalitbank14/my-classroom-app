@@ -674,7 +674,7 @@ class GraphicsEngine:
     def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manager: RankManager) -> bytes:
         """
         Orchestrates the entire image generation process.
-        [V3 AGGRESSIVE FIX] Drastically tightened gaps and increased top padding for Thai rendering safety.
+        [UPDATED] Privilege text is now BOLD, LARGER, and DARKER for better readability/highlighting.
         """
         logger.info(f"Starting image generation for room: {room_name}")
         start_time = time.time()
@@ -684,25 +684,25 @@ class GraphicsEngine:
         total_rows = len(leaderboard_data)
 
         # =================================================================================
-        # [CONFIG V3] ตั้งค่าระยะห่างแบบบีบอัดสุดๆ
+        # [CONFIG] ตั้งค่าระยะห่าง (ปรับให้รองรับฟอนต์ใหญ่ขึ้น)
         # =================================================================================
-        # เพิ่มพื้นที่ขอบบนเยอะๆ เพื่อหนีปัญหาสระชนขอบ
         CARD_PADDING_TOP = 70     
-        CARD_PADDING_BOTTOM = 35
+        CARD_PADDING_BOTTOM = 40  # เพิ่มขอบล่างนิดนึงเพราะตัวหนังสือใหญ่ขึ้น
         CARD_GAP_Y = 20
 
-        # ระยะห่างระหว่างบรรทัด (บีบให้ชิดที่สุดเท่าที่เป็นไปได้)
-        GAP_NAME_MEMBERS = 5      # ชิดสุดๆ
+        # ระยะห่างระหว่างบรรทัด
+        GAP_NAME_MEMBERS = 5      
         GAP_MEMBERS_BAR = 20
         GAP_BAR_TITLE = 25
-        GAP_TITLE_PRIVILEGE = 5   # ชิดสุดๆ
+        GAP_TITLE_PRIVILEGE = 10  # ขยับห่างจากหัวข้อหน่อย ให้ตัวเน้นดูเด่น
 
         # ความสูงของพื้นที่ข้อความ
-        H_NAME = 100              # พื้นที่ความสูงสำหรับชื่อกลุ่ม (เผื่อไว้เยอะๆ)
+        H_NAME = 100              
         H_MEMBERS = 45
         H_BAR = 16
         H_RANK_TITLE = 50
-        H_PRIVILEGE = 40
+        # [แก้ตรงนี้] เพิ่มความสูงพื้นที่รองรับฟอนต์ใหม่ (จาก 40 -> 60)
+        H_PRIVILEGE = 60          
 
         # First pass: Calculate canvas height
         current_y_sim = self.cfg.IMG_HEADER_HEIGHT + 40
@@ -718,7 +718,7 @@ class GraphicsEngine:
         img = Image.new('RGBA', (self.cfg.IMG_WIDTH, canvas_height), color=self.cfg.COLOR_BACKGROUND)
         draw = ImageDraw.Draw(img)
         
-        # Header Rendering
+        # Header Rendering (ส่วนหัวเหมือนเดิม)
         draw.rectangle([(0, 0), (self.cfg.IMG_WIDTH, self.cfg.IMG_HEADER_HEIGHT)], fill=self.cfg.COLOR_BRAND_PRIMARY)
         draw.ellipse([(900, -150), (1500, 450)], fill=self.cfg.COLOR_BRAND_SECONDARY)
         draw.ellipse([(-100, 250), (500, 850)], fill=self.cfg.COLOR_BRAND_SECONDARY)
@@ -754,7 +754,7 @@ class GraphicsEngine:
             card_width = self.cfg.IMG_WIDTH - (self.cfg.IMG_PADDING_X * 2)
             card_y_start = current_y_cursor
 
-            # Y Positions (Cumulative - Tight Spacing)
+            # Y Positions
             content_y_rel = CARD_PADDING_TOP
             Y_POS_NAME = card_y_start + content_y_rel
             content_y_rel += H_NAME + GAP_NAME_MEMBERS
@@ -794,11 +794,11 @@ class GraphicsEngine:
             content_x_start = card_x_start + 260
             content_max_width = 650
             
-            # 2.1 Group Name (ใช้ฟอนต์ขนาด 65 เพื่อความปลอดภัยของสระ)
+            # 2.1 Group Name
             self._draw_text_with_autofit(
                 draw, str(row['GroupName']),
                 content_x_start, Y_POS_NAME, content_max_width,
-                self.cfg.FONT_PRIMARY_BOLD, 65, self.cfg.COLOR_TEXT_PRIMARY, anchor="lt"
+                self.cfg.FONT_PRIMARY_BOLD, 65, self.cfg.COLOR_TEXT_PRIMARY, anchor="lt", language="th"
             )
 
             # 2.2 Members
@@ -819,14 +819,19 @@ class GraphicsEngine:
                 )
 
             # 2.4 Rank Title
-            draw.text((content_x_start, Y_POS_RANK_TITLE), rank_def.th_name, font=f_rank_title, fill=rank_def.color, anchor="lt")
+            draw.text((content_x_start, Y_POS_RANK_TITLE), rank_def.th_name, font=f_rank_title, fill=rank_def.color, anchor="lt", language="th")
 
-            # 2.5 Privilege
+            # 2.5 Privilege (แก้ไข: ตัวใหญ่ขึ้น + ตัวหนา + สีเข้ม)
             privilege_txt = rank_def.description
+            
+            # เลือกสี: ใช้สีเดียวกับยศ (rank_def.color) แต่ปรับให้เข้มนิดนึง หรือใช้สีดำเข้มไปเลย
+            # ในที่นี้ใช้สี Slate-800 (#1E293B) เพื่อความอ่านง่ายสูงสุดและดูพรีเมียม
+            highlight_color = "#1E293B" 
+            
             self._draw_text_with_autofit(
                 draw, privilege_txt,
                 content_x_start, Y_POS_PRIVILEGE, content_max_width,
-                self.cfg.FONT_PRIMARY_REG, 40, self.cfg.COLOR_TEXT_SECONDARY, anchor="lt"
+                self.cfg.FONT_PRIMARY_BOLD, 50, highlight_color, anchor="lt", language="th"
             )
 
             # --- Col 3: Score ---
@@ -851,7 +856,7 @@ class GraphicsEngine:
         buf = io.BytesIO()
         img_final.save(buf, format='PNG', optimize=True)
         buf.seek(0)
-        return buf.getvalue()
+        return buf.getvalue())
 
 # ==============================================================================
 # MODULE 6: PRESENTATION LAYER (STREAMLIT UI)
