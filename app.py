@@ -856,7 +856,7 @@ class GraphicsEngine:
         buf = io.BytesIO()
         img_final.save(buf, format='PNG', optimize=True)
         buf.seek(0)
-        return buf.getvalue())
+        return buf.getvalue()
 
 # ==============================================================================
 # MODULE 6: PRESENTATION LAYER (STREAMLIT UI)
