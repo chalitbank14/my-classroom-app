@@ -607,10 +607,10 @@ class GraphicsEngine:
             cleaned = cleaned.replace(char, "")
         return cleaned.strip()
 
-    def _draw_text_with_autofit(self, draw, text, x, y, max_width, font_path, max_size, color, anchor="lt"):
+    def _draw_text_with_autofit(self, draw, text, x, y, max_width, font_path, max_size, color, anchor="lt", language=None):
         """
         Helper to fit text within width by shrinking font size.
-        [UPDATED] Added 'language="th"' to activate Text Shaping (libraqm) for correct Thai rendering.
+        [UPDATED] Now accepts 'language' argument to fix Thai rendering issues.
         """
         current_size = max_size
         min_size = 20
@@ -620,19 +620,20 @@ class GraphicsEngine:
             font = self._get_font(font_path, current_size)
             
             # Check width using length logic
-            bbox = draw.textbbox((0, 0), text, font=font, language="th")
+            # ส่งค่า language ไปช่วยคำนวณความกว้างสระด้วย
+            bbox = draw.textbbox((0, 0), text, font=font, language=language)
             text_w = bbox[2] - bbox[0]
             
             if text_w <= max_width:
                 # Found fit! Draw with Thai Language Hint
-                draw.text((x, y), text, font=font, fill=color, anchor=anchor, language="th")
+                draw.text((x, y), text, font=font, fill=color, anchor=anchor, language=language)
                 return
             
             current_size -= 5 # Step down faster
             
         # Fallback if still too big (draw anyway with min size)
         font = self._get_font(font_path, min_size)
-        draw.text((x, y), text, font=font, fill=color, anchor=anchor, language="th")
+        draw.text((x, y), text, font=font, fill=color, anchor=anchor, language=language)
 
 # [ADD THIS] เพิ่มฟังก์ชันนี้ลงใน Class GraphicsEngine
     def _draw_vector_medal(self, draw: ImageDraw.Draw, x: int, y: int, color_hex: str, rank_idx: int):
