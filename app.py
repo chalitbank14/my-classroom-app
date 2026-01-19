@@ -67,9 +67,10 @@ class AppConfig:
     IMG_CARD_RADIUS: int = 35
 
     # Font Configuration (Must be present in the environment)
-    FONT_PRIMARY_BOLD: str = "Sarabun-Bold.ttf"
-    FONT_PRIMARY_REG: str = "Sarabun-Regular.ttf"
-
+    # [แก้ตรงนี้] เปลี่ยนจาก Sarabun เป็น NotoSansThai (หรือชื่อไฟล์ที่คุณโหลดมา)
+    FONT_PRIMARY_BOLD: str = "NotoSansThai-Bold.ttf" 
+    FONT_PRIMARY_REG: str = "NotoSansThai-Regular.ttf"
+    
     # Color Palette (Modern Corporate Theme)
     COLOR_BRAND_PRIMARY: str = "#4338CA"
     COLOR_BRAND_SECONDARY: str = "#3730A3"
