@@ -675,7 +675,7 @@ class GraphicsEngine:
     def render_leaderboard_image(self, room_name: str, df: pd.DataFrame, rank_manager: RankManager) -> bytes:
         """
         Orchestrates the entire image generation process.
-        [FIXED] Adjusted line heights and font sizes to prevent Thai diacritic overlapping (สระจม/วรรณยุกต์ทับกัน).
+        [V3 AGGRESSIVE FIX] Drastically tightened gaps and increased top padding for Thai rendering safety.
         """
         logger.info(f"Starting image generation for room: {room_name}")
         start_time = time.time()
@@ -685,21 +685,21 @@ class GraphicsEngine:
         total_rows = len(leaderboard_data)
 
         # =================================================================================
-        # [CONFIG] การตั้งค่าระยะห่าง (ปรับจูนเพื่อแก้สระภาษาไทย)
+        # [CONFIG V3] ตั้งค่าระยะห่างแบบบีบอัดสุดๆ
         # =================================================================================
-        CARD_PADDING_TOP = 55     # เพิ่มขอบบนนิดหน่อย ให้วรรณยุกต์ไม่ชนขอบ
+        # เพิ่มพื้นที่ขอบบนเยอะๆ เพื่อหนีปัญหาสระชนขอบ
+        CARD_PADDING_TOP = 70     
         CARD_PADDING_BOTTOM = 35
-        CARD_GAP_Y = 25
+        CARD_GAP_Y = 20
 
-        # ระยะห่างระหว่างบรรทัด (Gap)
-        GAP_NAME_MEMBERS = 10     # ลด Gap ลงอีก เพราะเราจะไปเพิ่มความสูงกล่องข้อความแทน
-        GAP_MEMBERS_BAR = 25
-        GAP_BAR_TITLE = 30
-        GAP_TITLE_PRIVILEGE = 8
+        # ระยะห่างระหว่างบรรทัด (บีบให้ชิดที่สุดเท่าที่เป็นไปได้)
+        GAP_NAME_MEMBERS = 5      # ชิดสุดๆ
+        GAP_MEMBERS_BAR = 20
+        GAP_BAR_TITLE = 25
+        GAP_TITLE_PRIVILEGE = 5   # ชิดสุดๆ
 
-        # ความสูงของพื้นที่ข้อความ (Height Reserved)
-        # [สำคัญ] เพิ่ม H_NAME เป็น 100 เพื่อให้มีพื้นที่เหลือเฟือสำหรับ สระบน+วรรณยุกต์ (เช่น "นี้", "ตี้")
-        H_NAME = 100              
+        # ความสูงของพื้นที่ข้อความ
+        H_NAME = 100              # พื้นที่ความสูงสำหรับชื่อกลุ่ม (เผื่อไว้เยอะๆ)
         H_MEMBERS = 45
         H_BAR = 16
         H_RANK_TITLE = 50
@@ -738,8 +738,6 @@ class GraphicsEngine:
         f_score_val = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 110)
         f_score_lbl = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 45)
         f_members = self._get_font(self.cfg.FONT_PRIMARY_REG, 42)
-        
-        # [สำคัญ] ลดขนาดฟอนต์ชื่อยศลงนิดหน่อย เพื่อความสวยงาม
         f_rank_title = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 42) 
 
         for i, row in leaderboard_data.iterrows():
@@ -757,7 +755,7 @@ class GraphicsEngine:
             card_width = self.cfg.IMG_WIDTH - (self.cfg.IMG_PADDING_X * 2)
             card_y_start = current_y_cursor
 
-            # Y Positions (Cumulative)
+            # Y Positions (Cumulative - Tight Spacing)
             content_y_rel = CARD_PADDING_TOP
             Y_POS_NAME = card_y_start + content_y_rel
             content_y_rel += H_NAME + GAP_NAME_MEMBERS
@@ -797,8 +795,7 @@ class GraphicsEngine:
             content_x_start = card_x_start + 260
             content_max_width = 650
             
-            # 2.1 Group Name
-            # [แก้ปัญหา] ลดขนาดฟอนต์เหลือ 65 (จุดสำคัญที่ทำให้สระไม่ขี่กัน)
+            # 2.1 Group Name (ใช้ฟอนต์ขนาด 65 เพื่อความปลอดภัยของสระ)
             self._draw_text_with_autofit(
                 draw, str(row['GroupName']),
                 content_x_start, Y_POS_NAME, content_max_width,
