@@ -1421,13 +1421,35 @@ class UIManager:
                 except:
                     history_data = []
                 
-                # Use data editor to let user modify history directly
+                # --- [FIX START] แปลงข้อมูลให้ตรง Type ก่อนส่งเข้า Editor ---
+                df_history = pd.DataFrame(history_data)
+                
+                # 1. ถ้าไม่มีข้อมูล ให้สร้าง DataFrame เปล่าที่มีหัวตารางครบถ้วน
+                if df_history.empty:
+                    df_history = pd.DataFrame(columns=["ts", "amount", "reason", "id", "balance"])
+                
+                # 2. แปลงคอลัมน์ 'ts' จาก String ให้เป็น Datetime Object จริงๆ
+                if "ts" in df_history.columns:
+                    df_history["ts"] = pd.to_datetime(df_history["ts"], errors='coerce')
+                
+                # 3. แปลง amount/balance ให้เป็นตัวเลขแน่นอน
+                if "amount" in df_history.columns:
+                    df_history["amount"] = pd.to_numeric(df_history["amount"], errors='coerce').fillna(0).astype(int)
+                if "balance" in df_history.columns:
+                    df_history["balance"] = pd.to_numeric(df_history["balance"], errors='coerce').fillna(0).astype(int)
+                # --- [FIX END] ---
+
+                # Use data editor with PREPARED DataFrame
                 edited_history_df = st.data_editor(
-                    pd.DataFrame(history_data),
+                    df_history, # ใช้ตัวแปรใหม่ที่แปลงค่าแล้ว
                     num_rows="dynamic",
                     use_container_width=True,
                     column_config={
-                        "ts": st.column_config.DatetimeColumn("Timestamp", format="YYYY-MM-DD HH:mm"),
+                        "ts": st.column_config.DatetimeColumn(
+                            "Timestamp", 
+                            format="YYYY-MM-DD HH:mm",
+                            step=60
+                        ),
                         "amount": st.column_config.NumberColumn("XP Amount", required=True),
                         "reason": st.column_config.TextColumn("Reason", required=True),
                         "id": st.column_config.TextColumn("Transaction ID", disabled=True),
@@ -1437,6 +1459,11 @@ class UIManager:
                 )
                 
                 if st.button("💾 Save & Recalculate History"):
+                    # แปลง datetime กลับเป็น string format ก่อนส่งไปบันทึก
+                    # (เพราะ JSON เก็บ datetime object ไม่ได้)
+                    if not edited_history_df.empty and "ts" in edited_history_df.columns:
+                        edited_history_df["ts"] = edited_history_df["ts"].dt.strftime("%Y-%m-%d %H:%M")
+                        
                     if self.db.apply_history_override(room_name, target_pe, edited_history_df, all_df, self.badge_sys):
                         st.success("History overwritten and XP recalculated successfully!")
                         time.sleep(0.8)
