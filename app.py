@@ -60,8 +60,8 @@ class AppConfig:
     # Image Generation Constants
     IMG_WIDTH: int = 1400
     IMG_HEADER_HEIGHT: int = 700
-    # แก้ไข: เพิ่มความสูงจาก 500 เป็น 650 เพื่อให้มีที่ว่างสำหรับสระลอย
-    IMG_ROW_HEIGHT: int = 650   
+    # แก้ไข: ลดความสูงแถวลงเหลือ 550 เพื่อให้การ์ดกระชับขึ้น
+    IMG_ROW_HEIGHT: int = 550
     IMG_FOOTER_HEIGHT: int = 150
     IMG_PADDING_X: int = 50
     IMG_CARD_RADIUS: int = 35
@@ -788,13 +788,13 @@ class GraphicsEngine:
             content_x_start = card_x_start + 260
             content_max_width = 650
             
-            # แก้ไข: ปรับระยะห่างแนวตั้ง (Vertical Rhythm) ใหม่ทั้งหมด
-            # เพิ่มระยะห่าง (+100) เพื่อกันสระอุ/อู ชนกับวรรณยุกต์บรรทัดล่าง
-            Y_POS_NAME = card_y_start + 60
-            Y_POS_MEMBERS = Y_POS_NAME + 100        # เดิม +75 (เพิ่มพื้นที่ให้ชื่อกลุ่ม)
-            Y_POS_PROGRESS_BAR = Y_POS_MEMBERS + 100 # เดิม +60 (เพิ่มพื้นที่ให้รายชื่อสมาชิก)
-            Y_POS_RANK_TITLE = Y_POS_PROGRESS_BAR + 70 # เดิม +55
-            Y_POS_PRIVILEGE = Y_POS_RANK_TITLE + 70    # เดิม +55
+            # แก้ไข: ปรับลดระยะห่างบรรทัดให้กระชับขึ้น
+            # (ลดจาก +100 เหลือ +80 และจาก +70 เหลือ +60)
+            Y_POS_NAME = card_y_start + 50          # ขยับบรรทัดแรกขึ้นนิดหน่อย
+            Y_POS_MEMBERS = Y_POS_NAME + 80         # ลดช่องว่าง
+            Y_POS_PROGRESS_BAR = Y_POS_MEMBERS + 80 # ลดช่องว่าง
+            Y_POS_RANK_TITLE = Y_POS_PROGRESS_BAR + 60 # บีบให้ชิดหลอดพลังมากขึ้น
+            Y_POS_PRIVILEGE = Y_POS_RANK_TITLE + 60    # บีบคำอธิบายให้ชิดขึ้น
 
             # 2.1 Group Name (Auto-fit, Bold)
             self._draw_text_with_autofit(
