@@ -70,7 +70,7 @@ class AppConfig:
     # [แก้ตรงนี้] เปลี่ยนจาก Sarabun เป็น NotoSansThai (หรือชื่อไฟล์ที่คุณโหลดมา)
     FONT_PRIMARY_BOLD: str = "NotoSansThai-Bold.ttf" 
     FONT_PRIMARY_REG: str = "NotoSansThai-Regular.ttf"
-    
+
     # Color Palette (Modern Corporate Theme)
     COLOR_BRAND_PRIMARY: str = "#4338CA"
     COLOR_BRAND_SECONDARY: str = "#3730A3"
@@ -607,34 +607,32 @@ class GraphicsEngine:
             cleaned = cleaned.replace(char, "")
         return cleaned.strip()
 
-    def _draw_text_with_autofit(self, draw: ImageDraw.Draw, text: str, 
-                                x: int, y: int, max_width: int,
-                                font_name: str, max_size: int, 
-                                color: str, anchor: str = "lt") -> None:
+    def _draw_text_with_autofit(self, draw, text, x, y, max_width, font_path, max_size, color, anchor="lt"):
         """
-        Draws text, automatically reducing font size if it exceeds max_width.
-        Uses 'lt' (Left Top) anchor for predictable vertical positioning.
+        Helper to fit text within width by shrinking font size.
+        [UPDATED] Added 'language="th"' to activate Text Shaping (libraqm) for correct Thai rendering.
         """
-        text = self._clean_text_for_render(text)
-        if not text: return
-
         current_size = max_size
-        min_size = 30 # Absolute minimum legible size
+        min_size = 20
         
-        font = self._get_font(font_name, current_size)
-        
-        # Iteratively reduce size until it fits
-        while current_size > min_size:
-            # getlength is efficient for checking width
-            if font.getlength(text) <= max_width:
-                break
-            current_size -= 4 # Step down size
-            font = self._get_font(font_name, current_size)
+        # Binary search or Step-down for speed
+        while current_size >= min_size:
+            font = self._get_font(font_path, current_size)
             
-        # Final draw with fitted font
-        # Using 'lt' anchor means (x, y) is the top-left corner of the text bounding box.
-        # This is crucial for predictable stacking of Thai text.
-        draw.text((x, y), text, font=font, fill=color, anchor=anchor)
+            # Check width using length logic
+            bbox = draw.textbbox((0, 0), text, font=font, language="th")
+            text_w = bbox[2] - bbox[0]
+            
+            if text_w <= max_width:
+                # Found fit! Draw with Thai Language Hint
+                draw.text((x, y), text, font=font, fill=color, anchor=anchor, language="th")
+                return
+            
+            current_size -= 5 # Step down faster
+            
+        # Fallback if still too big (draw anyway with min size)
+        font = self._get_font(font_path, min_size)
+        draw.text((x, y), text, font=font, fill=color, anchor=anchor, language="th")
 
 # [ADD THIS] เพิ่มฟังก์ชันนี้ลงใน Class GraphicsEngine
     def _draw_vector_medal(self, draw: ImageDraw.Draw, x: int, y: int, color_hex: str, rank_idx: int):
@@ -727,9 +725,9 @@ class GraphicsEngine:
         center_x = self.cfg.IMG_WIDTH // 2
         self._draw_vector_trophy(draw, center_x, 180)
         f_title = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 60)
-        draw.text((center_x, 380), "CLASSROOM LEADERBOARD", font=f_title, fill=self.cfg.COLOR_BRAND_ACCENT, anchor="mm")
+        draw.text((center_x, 380), "CLASSROOM LEADERBOARD", font=f_title, fill=self.cfg.COLOR_BRAND_ACCENT, anchor="mm", language="th")
         f_room = self._get_font(self.cfg.FONT_PRIMARY_BOLD, 150)
-        draw.text((center_x, 550), room_name, font=f_room, fill="white", anchor="mm")
+        draw.text((center_x, 550), room_name, font=f_room, fill="white", anchor="mm", language="th")
 
         # Rows Rendering
         current_y_cursor = self.cfg.IMG_HEADER_HEIGHT + 40
@@ -790,7 +788,7 @@ class GraphicsEngine:
             else:
                 draw.ellipse([(sticker_cx - 80, sticker_cy - 80), (sticker_cx + 80, sticker_cy + 80)], fill="#FFFFFF")
                 draw.ellipse([(sticker_cx - 70, sticker_cy - 70), (sticker_cx + 70, sticker_cy + 70)], fill=rank_color_hex)
-            draw.text((sticker_cx, sticker_cy), str(i + 1), font=f_rank_num, fill="white", anchor="mm")
+            draw.text((sticker_cx, sticker_cy), str(i + 1), font=f_rank_num, fill="white", anchor="mm", language="th")
 
             # --- Col 2: Info ---
             content_x_start = card_x_start + 260
@@ -806,7 +804,7 @@ class GraphicsEngine:
             # 2.2 Members
             members_txt = self._clean_text_for_render(str(row['Members']))
             if len(members_txt) > 65: members_txt = members_txt[:62] + "..."
-            draw.text((content_x_start, Y_POS_MEMBERS), members_txt, font=f_members, fill=self.cfg.COLOR_TEXT_SECONDARY, anchor="lt")
+            draw.text((content_x_start, Y_POS_MEMBERS), members_txt, font=f_members, fill=self.cfg.COLOR_TEXT_SECONDARY, anchor="lt", language="th")
 
             # 2.3 Progress Bar
             draw.rounded_rectangle(
@@ -834,8 +832,8 @@ class GraphicsEngine:
             # --- Col 3: Score ---
             score_x_anchor = self.cfg.IMG_WIDTH - self.cfg.IMG_PADDING_X - 40
             score_y_center = card_y_start + (card_height // 2)
-            draw.text((score_x_anchor, score_y_center - 10), f"{xp}", font=f_score_val, fill=score_color, anchor="rs")
-            draw.text((score_x_anchor, score_y_center + 50), "XP", font=f_score_lbl, fill=self.cfg.COLOR_TEXT_MUTED, anchor="rs")
+            draw.text((score_x_anchor, score_y_center - 10), f"{xp}", font=f_score_val, fill=score_color, anchor="rs", language="th")
+            draw.text((score_x_anchor, score_y_center + 50), "XP", font=f_score_lbl, fill=self.cfg.COLOR_TEXT_MUTED, anchor="rs", language="th")
 
             current_y_cursor += card_height + CARD_GAP_Y
 
@@ -844,7 +842,7 @@ class GraphicsEngine:
         f_footer = self._get_font(self.cfg.FONT_PRIMARY_REG, 38)
         timestamp_str = datetime.now().strftime('%d/%m/%Y %H:%M')
         footer_text = f"Generated by {self.cfg.APP_NAME} • {timestamp_str}"
-        draw.text((self.cfg.IMG_WIDTH // 2, footer_y_center), footer_text, font=f_footer, fill=self.cfg.COLOR_TEXT_MUTED, anchor="mm")
+        draw.text((self.cfg.IMG_WIDTH // 2, footer_y_center), footer_text, font=f_footer, fill=self.cfg.COLOR_TEXT_MUTED, anchor="mm", language="th")
 
         # Save
         img_final = img.convert('RGB')
