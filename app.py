@@ -520,7 +520,8 @@ class GoogleSheetsRepository:
     def apply_history_override(self, room: str, group_name: str, new_history_df: pd.DataFrame, 
                                current_df: pd.DataFrame, badge_sys: BadgeSystem) -> bool:
         """
-        Replaces a group's entire history and recalculates everything. Power user feature.
+        Replaces a group's entire history and recalculates everything.
+        [FIXED] Sanitize timestamp types before sorting to prevent TypeError.
         """
         mask = (current_df['Room'] == room) & (current_df['GroupName'] == group_name)
         if not mask.any():
@@ -531,18 +532,33 @@ class GoogleSheetsRepository:
         # Convert edited DataFrame back to list of dicts
         history_list = new_history_df.to_dict('records')
         
+        # --- [FIX START] บังคับแปลง 'ts' ให้เป็น String ล้วน ก่อนเรียงลำดับ ---
+        for item in history_list:
+            val = item.get('ts')
+            # ถ้าเป็นค่าว่าง หรือ NaT ให้เป็น string ว่าง
+            if pd.isna(val) or val is None:
+                 item['ts'] = ""
+            else:
+                 # แปลงเป็น string ทันที (ไม่ว่าจะมาเป็น Timestamp หรืออะไรก็ตาม)
+                 item['ts'] = str(val)
+        # --- [FIX END] ---
+
         # Recalculate balances logically based on time
         # 1. Sort ascending by time to calculate running balance
         try:
             history_sorted_asc = sorted(history_list, key=lambda x: x.get('ts', ''))
-        except Exception:
-             # Fallback if ts is missing or broken
+        except Exception as e:
+             # ถ้ายังเรียงไม่ได้จริงๆ ให้ใช้ลำดับเดิมไปเลย กันโปรแกรมพัง
+             logger.warning(f"Sorting error: {e}")
              history_sorted_asc = history_list
 
         running_balance = 0
         for item in history_sorted_asc:
             # Ensure amount is int
-            amt = int(item.get('amount', 0))
+            try:
+                amt = int(item.get('amount', 0))
+            except:
+                amt = 0
             item['amount'] = amt
             running_balance += amt
             item['balance'] = running_balance
@@ -550,7 +566,10 @@ class GoogleSheetsRepository:
         final_xp = running_balance
         
         # 2. Sort descending (newest first) for storage
-        history_sorted_desc = sorted(history_sorted_asc, key=lambda x: x.get('ts', ''), reverse=True)
+        try:
+            history_sorted_desc = sorted(history_sorted_asc, key=lambda x: x.get('ts', ''), reverse=True)
+        except:
+            history_sorted_desc = history_sorted_asc[::-1] # Fallback
         
         # Re-evaluate badges
         new_badges = badge_sys.evaluate_badges(final_xp, history_sorted_desc)
